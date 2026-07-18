@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Dienstleistung auswählen (Checkbox ganze Karte)</title>
+<link rel="stylesheet" href="styles.css" />
+<script src="app.js" defer></script>
+</head>
+<body>
+    <div id="toast" class="toast" aria-live="polite" aria-atomic="true"></div>
+    <div class="nav-bar">
+      <h1>
+        Dienstleistungen
+        <span class="subtitle">für alle</span>
+      </h1>
+            <div class="nav-actions">
+                <button id="toggle-appointments" type="button" style="display: none;">Meine Termine anzeigen</button>
+                <button onclick="logout()">Logout</button>
+            </div>
+    </div>
+
+    <div id="auth-section">
+      <h2>Login</h2>
+      <form id="login-form">
+        <input
+          class="input-area"
+          type="email"
+          id="email"
+          placeholder="Email"
+          autocomplete="email"
+          required
+        />
+        <input
+          class="input-area"
+          type="password"
+          id="password"
+          placeholder="Password"
+          autocomplete="current-password"
+          required
+        />
+        <div class="button-container">
+          <button type="submit">Login</button>
+          <button onclick="signup()" type="button">Signup</button>
+        </div>
+      </form>
+    </div>
+
+    <div id="appointments-section" class="appointments-section" style="display: none;">
+        <div class="appointments-header">
+            <div>
+                <h2>Meine Termine</h2>
+                <p class="appointments-subtitle">Alle gebuchten Termine des aktuell eingeloggten Nutzers.</p>
+            </div>
+            <button id="refresh-appointments" type="button">Aktualisieren</button>
+            <button id="cancle-all-appintments" type="button">Alle Termine Stornieren</button>
+        </div>
+        <div id="appointments-list" class="appointments-list"></div>
+    </div>
+
+<div class="flex-page-container">
+    <!-- Schritt 1: Dienstleistungen auswählen -->
+    <div id="step-services" class="flex-step-container active">
+        <h1 class="flex-title">Bitte wählen Sie eine Dienstleistung</h1>
+        <div id="breadcrumbs" class="flex-breadcrumbs"></div>
+        <div id="service-list" class="flex-service-list"></div>
+        <div id="selected-services" class="flex-selected-list" style="display:none;">
+            <h3>Ausgewählte Dienstleistungen:</h3>
+            <div id="selected-list"></div>
+            <button id="confirm-selection" class="flex-confirm-btn">Auswahl bestätigen</button>
+            <button id="clear-selection" class="flex-clear-btn">Alle entfernen</button>
+        </div>
+    </div>
+
+    <!-- Schritt 2: Mitarbeiter auswählen -->
+    <div id="step-employee" class="flex-step-container">
+        <h1 class="flex-title">Bitte wählen Sie einen Mitarbeiter</h1>
+        
+        <div id="employee-list" class="flex-service-list"></div>
+        
+        <!-- Gewählte Dienstleistungen anzeigen -->
+        <div id="selected-services-summary" class="flex-selected-list" style="display:block; margin-top: 20px;">
+            <h3>Ihre gewählten Dienstleistungen:</h3>
+            <div id="services-summary-list"></div>
+        </div>
+        
+        <div style="margin-top: 20px; text-align: center;">
+            <button id="back-to-services" class="flex-back-btn">Zurück</button>
+            <button id="confirm-employee" class="flex-confirm-btn">Weiter</button>
+        </div>
+    </div>
+
+    <!-- Schritt 3: Termin auswählen -->
+    <div id="step-appointment" class="flex-step-container">
+        <h1 class="flex-title">Bitte wählen Sie einen Termin</h1>
+        
+        <!-- Zusammenfassung -->
+        <div class="flex-selected-list" style="display:block; margin-bottom: 20px;">
+            <h3>Ihre Auswahl:</h3>
+            <div id="appointment-summary"></div>
+        </div>
+
+        <!-- Ansicht umschalten -->
+        <div class="flex-view-toggle">
+            <button id="view-day" class="flex-view-btn active">Tagesansicht</button>
+            <button id="view-month" class="flex-view-btn">Monatsansicht</button>
+        </div>
+
+        <!-- Kalender Container -->
+        <div id="calendar-container" class="flex-calendar-container">
+            <!-- Tagesansicht -->
+            <div id="day-view" style="display: block;">
+                <div class="flex-calendar-header">
+                    <button id="prev-day" class="flex-calendar-nav-btn">← Vorheriger Tag</button>
+                    <div id="current-day-title" class="flex-calendar-title"></div>
+                    <button id="next-day" class="flex-calendar-nav-btn">Nächster Tag →</button>
+                </div>
+                <div id="timeslot-list" class="flex-timeslot-list"></div>
+            </div>
+
+            <!-- Monatsansicht -->
+            <div id="month-view" style="display: none;">
+                <div class="flex-calendar-header">
+                    <button id="prev-month" class="flex-calendar-nav-btn">← Vorheriger Monat</button>
+                    <div id="current-month-title" class="flex-calendar-title"></div>
+                    <button id="next-month" class="flex-calendar-nav-btn">Nächster Monat →</button>
+                </div>
+                <div class="flex-month-grid">
+                    <div class="flex-month-weekday">Mo</div>
+                    <div class="flex-month-weekday">Di</div>
+                    <div class="flex-month-weekday">Mi</div>
+                    <div class="flex-month-weekday">Do</div>
+                    <div class="flex-month-weekday">Fr</div>
+                    <div class="flex-month-weekday">Sa</div>
+                    <div class="flex-month-weekday">So</div>
+                </div>
+                <div id="month-grid" class="flex-month-grid"></div>
+            </div>
+        </div>
+
+        <div style="margin-top: 20px; text-align: center;">
+            <button id="back-to-employee" class="flex-back-btn">Zurück</button>
+            <button id="confirm-appointment" class="flex-confirm-btn">Termin buchen</button>
+        </div>
+    </div>
+</div>
+</body>
+</html>

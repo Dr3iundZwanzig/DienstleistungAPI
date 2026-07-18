@@ -1,0 +1,1120 @@
+document.addEventListener('DOMContentLoaded', async () => {
+    const token = localStorage.getItem('token');
+
+    await loadEmployees();
+
+
+    // --- Mitarbeiter daten an die db senden einmalig für die aufgabe vereinfacht kann später durch eigene mitarbeiter seite verwalted werden---
+    if (!localStorage.getItem('employeesSeeded')) {
+        await seedEmployees();
+        localStorage.setItem('employeesSeeded', 'true');
+    }
+
+    await loadAvailability(await getAvailabilityEmployeeId());
+
+    if (token) {
+        await showAuthenticatedState();
+    } else {
+        showLoggedOutState();
+    }
+});
+// Termine neu laden (api request)
+document.getElementById('refresh-appointments').addEventListener('click', async () => {
+    await loadUserAppointments();
+});
+
+document.getElementById('toggle-appointments').addEventListener('click', async () => {
+    const nextVisible = !appointmentsVisible;
+    setAppointmentsPanelVisible(nextVisible);
+    if (nextVisible) {
+        await loadUserAppointments();
+    }
+});
+
+document.getElementById('cancle-all-appintments').addEventListener('click', async () => {
+    await cancleAllAppointments();
+});
+
+document.getElementById('login-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    await login();
+});
+
+let toastTimeoutId = null;
+let appointmentsVisible = false;
+
+async function login() {
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+
+    try {
+        const res = await fetch('/api/login', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ email, password }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            throw new Error(`Failed to login: ${data.error}`);
+        }
+
+        if (data.token) {
+            localStorage.setItem('token', data.token);
+            await showAuthenticatedState();
+        } else {
+            alert('Login failed. Please check your credentials.');
+        }
+    } catch (error) {
+        alert(`Error: ${error.message}`);
+    }
+}
+
+async function signup() {
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+
+    try {
+        const res = await fetch('/api/users', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ email, password }),
+        });
+        if (!res.ok) {
+            const data = await res.json();
+            throw new Error(`Failed to create user: ${data.error}`);
+        }
+        console.log('User created!');
+        await login();
+    } catch (error) {
+        alert(`Error: ${error.message}`);
+    }
+}
+
+function logout() {
+    localStorage.removeItem('token');
+    showLoggedOutState();
+}
+
+function showLoggedOutState() {
+    document.getElementById('auth-section').style.display = 'block';
+    document.getElementById('toggle-appointments').style.display = 'none';
+    setAppointmentsPanelVisible(false);
+    document.getElementById('step-services').style.display = 'none';
+    setAppointmentsFeedback('');
+    document.getElementById('appointments-list').innerHTML = '';
+}
+
+async function showAuthenticatedState() {
+    document.getElementById('auth-section').style.display = 'none';
+    document.getElementById('toggle-appointments').style.display = 'inline-block';
+    setAppointmentsPanelVisible(false);
+    document.getElementById('step-services').style.display = 'block';
+}
+
+function setAppointmentsPanelVisible(visible) {
+    appointmentsVisible = visible;
+
+    document.getElementById('appointments-section').style.display = visible ? 'block' : 'none';
+    document.getElementById('toggle-appointments').textContent = visible
+        ? 'Meine Termine ausblenden'
+        : 'Meine Termine anzeigen';
+
+    if (!visible) {
+        document.getElementById('appointments-list').innerHTML = '';
+    }
+}
+
+function setAppointmentsFeedback(message, isError = false) {
+    const feedbackEl = document.getElementById('toast');
+
+    if (toastTimeoutId) {
+        clearTimeout(toastTimeoutId);
+        toastTimeoutId = null;
+    }
+
+    if (!message) {
+        feedbackEl.textContent = '';
+        feedbackEl.classList.remove('visible', 'toast-success', 'toast-error');
+        return;
+    }
+
+    feedbackEl.textContent = message;
+    feedbackEl.classList.remove('toast-success', 'toast-error');
+    feedbackEl.classList.add(isError ? 'toast-error' : 'toast-success', 'visible');
+
+    toastTimeoutId = window.setTimeout(() => {
+        feedbackEl.classList.remove('visible', 'toast-success', 'toast-error');
+        feedbackEl.textContent = '';
+        toastTimeoutId = null;
+    }, 3200);
+}
+
+function formatAppointmentDate(dateString) {
+    return new Date(dateString + 'T00:00:00').toLocaleDateString('de-DE', {
+        weekday: 'long',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+    });
+}
+
+function renderUserAppointments(appointments) {
+    const listEl = document.getElementById('appointments-list');
+    listEl.innerHTML = '';
+
+    if (!appointments.length) {
+        const emptyState = document.createElement('div');
+        emptyState.className = 'appointment-empty';
+        emptyState.textContent = 'Noch keine Termine gebucht.';
+        listEl.appendChild(emptyState);
+        return;
+    }
+
+    appointments.forEach((appointment) => {
+        const card = document.createElement('div');
+        card.className = 'appointment-card';
+
+        const services = Array.isArray(appointment.services) ? appointment.services.join(', ') : '';
+        const durationText = appointment.total_duration_minutes
+            ? `${appointment.total_duration_minutes} Min`
+            : 'Dauer unbekannt';
+        const priceText = Number(appointment.total_price || 0).toFixed(2) + ' EUR';
+
+        card.innerHTML = `
+            <div class="appointment-card-header">
+                <div>
+                    <div class="appointment-card-title">${formatAppointmentDate(appointment.date)}</div>
+                    <div class="appointment-card-time">${appointment.start_time} - ${appointment.end_time}</div>
+                </div>
+                <div class="appointment-price">${priceText}</div>
+            </div>
+            <div class="appointment-card-meta">
+                <div><strong>Mitarbeiter:</strong> ${appointment.employee_name || 'Unbekannt'}</div>
+                <div><strong>Dienstleistungen:</strong> ${services || 'Keine Angabe'}</div>
+                <div><strong>Gesamtdauer:</strong> ${durationText}</div>
+            </div>
+            <div class="appointment-card-actions">
+                <button type="button" class="appointment-cancel" data-appointment-id="${appointment.id}">Termin stornieren</button>
+            </div>
+        `;
+
+        const cancelBtn = card.querySelector('.appointment-cancel');
+        cancelBtn.addEventListener('click', async () => {
+            await cancelAppointment(appointment.id);
+        });
+
+        listEl.appendChild(card);
+    });
+}
+
+async function cancelAppointment(appointmentId) {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        showLoggedOutState();
+        return;
+    }
+
+    const shouldCancel = window.confirm('Soll dieser Termin wirklich storniert werden?');
+    if (!shouldCancel) {
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/appointments/${encodeURIComponent(appointmentId)}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+            },
+        });
+
+        if (res.status === 401) {
+            localStorage.removeItem('token');
+            showLoggedOutState();
+            return;
+        }
+
+        const data = await res.json();
+        if (!res.ok) {
+            throw new Error(data.error || 'Termin konnte nicht storniert werden.');
+        }
+
+        await loadUserAppointments();
+        await loadAvailability(await getAvailabilityEmployeeId());
+        setAppointmentsFeedback('Termin wurde storniert.');
+    } catch (error) {
+        setAppointmentsFeedback(`Fehler beim Stornieren: ${error.message}`, true);
+    }
+}
+
+async function cancleAllAppointments() {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        showLoggedOutState();
+        return;
+    }
+
+    const shouldCancel = window.confirm('Sollen alle Termin wirklich storniert werden?');
+    if (!shouldCancel) {
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/appointments/delete`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+            },
+        });
+
+        if (res.status === 401) {
+            localStorage.removeItem('token');
+            showLoggedOutState();
+            return;
+        }
+
+        const data = await res.json();
+        if (!res.ok) {
+            throw new Error(data.error || 'Termine konnten nicht storniert werden.');
+        }
+
+        await loadUserAppointments();
+        await loadAvailability(await getAvailabilityEmployeeId());
+        setAppointmentsFeedback('Alle Termine wurden storniert.');
+    } catch (error) {
+        setAppointmentsFeedback(`Fehler beim Stornieren: ${error.message}`, true);
+    }
+}
+
+async function loadUserAppointments() {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        showLoggedOutState();
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/appointments', {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+            },
+        });
+
+        if (res.status === 401) {
+            localStorage.removeItem('token');
+            showLoggedOutState();
+            return;
+        }
+
+        const data = await res.json();
+        if (!res.ok) {
+            throw new Error(data.error || 'Termine konnten nicht geladen werden.');
+        }
+
+        renderUserAppointments(Array.isArray(data.data) ? data.data : []);
+        setAppointmentsFeedback('');
+    } catch (error) {
+        renderUserAppointments([]);
+        setAppointmentsFeedback(`Fehler beim Laden der Termine: ${error.message}`, true);
+    }
+}
+
+const servicesTree = {
+    "data": [
+        {
+            "id": "cat_01",
+            "name": "Friseur",
+            "children": [
+                {
+                    "id": "sub_01",
+                    "name": "Herren",
+                    "children": [
+                        {
+                            "id": "srv_001",
+                            "name": "Haarschnitt",
+                            "description": "Waschen, Schneiden, Föhnen",
+                            "duration_minutes": 45,
+                            "price": 39.90,
+                            "currency": "EUR",
+                            "is_active": true
+                        },
+                        {
+                            "id": "srv_002",
+                            "name": "Bartpflege",
+                            "description": "Trimmen und Konturen nachrasieren",
+                            "duration_minutes": 30,
+                            "price": 19.90,
+                            "currency": "EUR",
+                            "is_active": true
+                        }
+                    ]
+                },
+                {
+                    "id": "sub_02",
+                    "name": "Damen",
+                    "children": [
+                        {
+                            "id": "srv_003",
+                            "name": "Farbbehandlung",
+                            "description": "Färben oder Tönen inkl. Beratung",
+                            "duration_minutes": 90,
+                            "price": 79.00,
+                            "currency": "EUR",
+                            "is_active": true
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "cat_02",
+            "name": "Kosmetik",
+            "children": [
+                {
+                    "id": "srv_004",
+                    "name": "Maniküre",
+                    "description": "Nagelpflege inkl. Lackieren",
+                    "duration_minutes": 40,
+                    "price": 29.90,
+                    "currency": "EUR",
+                    "is_active": true
+                }
+            ]
+        }
+    ]
+};
+
+// --- Mitarbeiter daten in db speichern mit der api ---
+let employeesData = { data: [] };
+// --- Mitarbeiter daten von der db laden---
+async function loadEmployees() {
+    try {
+        const res = await fetch('/api/employees');
+        if (!res.ok) {
+            throw new Error('Could not load employees');
+        }
+        const data = await res.json();
+        employeesData = data;
+    } catch (error) {
+        console.error(error);
+        employeesData = { data: [] };
+    }
+}
+// --- Mitarbeiter daten zu db senden ---
+async function seedEmployees() {
+    const payload = {
+        data: [
+            {
+                id: 'emp_001',
+                name: 'Anna Müller',
+                title: 'Friseurmeisterin',
+                specialties: ['Haarschnitt', 'Farbbehandlung'],
+                is_active: true
+            },
+            {
+                id: 'emp_002',
+                name: 'Thomas Schmidt',
+                title: 'Friseur',
+                specialties: ['Haarschnitt', 'Bartpflege'],
+                is_active: true
+            },
+            {
+                id: 'emp_003',
+                name: 'Sarah Weber',
+                title: 'Kosmetikerin',
+                specialties: ['Maniküre', 'Gesichtsbehandlung'],
+                is_active: true
+            },
+            {
+                id: 'emp_004',
+                name: 'Michael Klein',
+                title: 'Barbier',
+                specialties: ['Bartpflege', 'Haarschnitt'],
+                is_active: true
+            }
+        ]
+    };
+
+    try {
+        await fetch('/api/employees/seed', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+    } catch (error) {
+        console.error('Failed to seed employees', error);
+    }
+}
+
+// --- Termine sind nun im backend ---
+let availabilityData = {
+    employee_id: null,
+    dates: []
+};
+
+async function getAvailabilityEmployeeId() {
+    if (selectedEmployee && selectedEmployee !== 'no_preference') {
+        return selectedEmployee;
+    }
+
+    if (selectedEmployee === 'no_preference') {
+        const serviceNames = Array.from(selectedServices.values()).map(service => service.name);
+        try {
+            const res = await fetch('/api/employees/resolve', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ services: serviceNames })
+            });
+            if (!res.ok) {
+                throw new Error('Could not resolve employee');
+            }
+            const data = await res.json();
+            if (data && data.employee_id) {
+                return data.employee_id;
+            }
+        } catch (error) {
+            console.error('Failed to resolve employee', error);
+        }
+    }
+
+    const fallbackEmployee = employeesData.data.find(emp => emp.is_active);
+    return fallbackEmployee ? fallbackEmployee.id : 'emp_001';
+}
+
+async function loadAvailability(employeeId) {
+    if (employeeId === undefined) {
+        employeeId = await getAvailabilityEmployeeId();
+    }
+
+    try {
+        const res = await fetch(`/api/availability?employee_id=${encodeURIComponent(employeeId)}`);
+        if (!res.ok) {
+            throw new Error('Could not load availability');
+        }
+        const data = await res.json();
+        if (data && Array.isArray(data.dates)) {
+            availabilityData = {
+                employee_id: employeeId,
+                dates: data.dates
+            };
+        } else {
+            availabilityData = {
+                employee_id: employeeId,
+                dates: []
+            };
+        }
+    } catch (error) {
+        console.error('Failed to load availability', error);
+        availabilityData = {
+            employee_id: employeeId,
+            dates: []
+        };
+    }
+}
+
+// --- State ---
+let path = [];
+let selectedServices = new Map();
+let selectedEmployee = null;
+let selectedTimeSlot = null;
+let currentStep = "services"; // "services", "employee", "appointment"
+let calendarView = "day"; // "day" or "month"
+let currentDate = null; // Aktuell angezeigtes Datum
+
+// --- Rendering ---
+function render(nodes) {
+    const listEl = document.getElementById("service-list");
+    listEl.innerHTML = "";
+
+    nodes.forEach(node => {
+        if (node.is_active === false) return;
+
+        const card = document.createElement("div");
+        card.className = "flex-service-card";
+
+        if (node.children) {
+            card.innerHTML = `<div class="flex-service-name">${node.name}</div>`;
+            card.addEventListener("click", () => {
+                path.push(node);
+                render(node.children);
+                renderBreadcrumbs();
+            });
+        } else {
+            const checked = selectedServices.has(node.id) ? "checked" : "";
+            card.innerHTML = `
+                <input type="checkbox" class="flex-checkbox" ${checked}>
+                <div class="flex-service-content">
+                    <div class="flex-service-name">${node.name}</div>
+                    <div class="flex-service-description">${node.description}</div>
+                    <div class="flex-service-meta">
+                        Dauer: ${node.duration_minutes} Min<br>
+                        Preis: ${node.price.toFixed(2)} ${node.currency}
+                    </div>
+                </div>
+            `;
+
+            const checkbox = card.querySelector(".flex-checkbox");
+
+            // Klick auf Karte toggelt Haken
+            card.addEventListener("click", (e) => {
+                if (e.target !== checkbox) {
+                    checkbox.checked = !checkbox.checked;
+                }
+                toggleSelection(node, checkbox.checked);
+            });
+
+            // Klick auf Checkbox direkt
+            checkbox.addEventListener("change", (e) => {
+                toggleSelection(node, e.target.checked);
+            });
+        }
+
+        listEl.appendChild(card);
+    });
+
+    renderBreadcrumbs();
+}
+
+// --- Toggle Auswahl ---
+function toggleSelection(node, checked) {
+    if (checked) {
+        selectedServices.set(node.id, node);
+    } else {
+        selectedServices.delete(node.id);
+    }
+    renderSelected();
+}
+
+// --- Breadcrumbs ---
+function resetBookingFlow() {
+    path = [];
+    selectedServices.clear();
+    selectedEmployee = null;
+    selectedTimeSlot = null;
+    currentStep = "services";
+    calendarView = "day";
+    currentDate = null;
+    availabilityData = { employee_id: null, dates: [] };
+    renderSelected();
+    showStep("services");
+    render(servicesTree.data);
+    renderBreadcrumbs();
+}
+
+function renderBreadcrumbs() {
+    const bcEl = document.getElementById("breadcrumbs");
+    bcEl.innerHTML = "";
+
+    const rootSpan = document.createElement("span");
+    rootSpan.textContent = "Start";
+    rootSpan.addEventListener("click", () => {
+        resetBookingFlow();
+    });
+    bcEl.appendChild(rootSpan);
+
+    path.forEach((node, idx) => {
+        const span = document.createElement("span");
+        span.textContent = node.name;
+        span.addEventListener("click", () => {
+            path = path.slice(0, idx + 1);
+            render(node.children);
+        });
+        bcEl.appendChild(span);
+    });
+}
+
+// --- Ausgewählte Dienstleistungen ---
+function renderSelected() {
+    const container = document.getElementById("selected-services");
+    const listEl = document.getElementById("selected-list");
+    listEl.innerHTML = "";
+
+    if (selectedServices.size === 0) {
+        container.style.display = "none";
+        return;
+    }
+
+    container.style.display = "block";
+    selectedServices.forEach(node => {
+        const item = document.createElement("div");
+        item.className = "flex-selected-item";
+
+        const textSpan = document.createElement("span");
+        textSpan.textContent = node.name + " (" + node.duration_minutes + " Min, " + node.price.toFixed(2) + " " + node.currency + ")";
+
+        const removeBtn = document.createElement("button");
+        removeBtn.className = "flex-remove-btn";
+        removeBtn.textContent = "✕";
+        removeBtn.addEventListener("click", () => {
+            selectedServices.delete(node.id);
+            renderSelected();
+            render(path.length > 0 ? path[path.length - 1].children : servicesTree.data);
+        });
+
+        item.appendChild(textSpan);
+        item.appendChild(removeBtn);
+        listEl.appendChild(item);
+    });
+}
+
+// --- Bestätigungsbutton ---
+document.getElementById("confirm-selection").addEventListener("click", () => {
+    if (selectedServices.size === 0) {
+        alert("Bitte wählen Sie mindestens eine Dienstleistung aus.");
+        return;
+    }
+    currentStep = "employee";
+    showStep(currentStep);
+    renderEmployees();
+});
+
+// --- Alle entfernen Button ---
+document.getElementById("clear-selection").addEventListener("click", () => {
+    selectedServices.clear();
+    renderSelected();
+    render(path.length > 0 ? path[path.length - 1].children : servicesTree.data);
+});
+
+// --- Mitarbeiter rendern ---
+function renderEmployees() {
+    const listEl = document.getElementById("employee-list");
+    listEl.innerHTML = "";
+
+    // Dienstleistungszusammenfassung anzeigen
+    renderServicesSummary();
+
+    // "Keine Präferenz" Option
+    const noPreferenceCard = document.createElement("div");
+    noPreferenceCard.className = "flex-employee-card";
+    const noPreferenceChecked = selectedEmployee === "no_preference" ? "checked" : "";
+    noPreferenceCard.innerHTML = `
+        <input type="checkbox" class="flex-employee-checkbox" ${noPreferenceChecked}>
+        <div class="flex-employee-info">
+            <div class="flex-employee-avatar">?</div>
+            <div class="flex-employee-details">
+                <div class="flex-employee-name">Keine Präferenz</div>
+                <div class="flex-employee-title">Erster verfügbarer Mitarbeiter</div>
+            </div>
+        </div>
+    `;
+
+    const noPreferenceCheckbox = noPreferenceCard.querySelector(".flex-employee-checkbox");
+
+    noPreferenceCard.addEventListener("click", (e) => {
+        if (e.target !== noPreferenceCheckbox) {
+            noPreferenceCheckbox.checked = !noPreferenceCheckbox.checked;
+        }
+        if (noPreferenceCheckbox.checked) {
+            selectedEmployee = "no_preference";
+            renderEmployees();
+        }
+    });
+
+    noPreferenceCheckbox.addEventListener("change", (e) => {
+        if (e.target.checked) {
+            selectedEmployee = "no_preference";
+            renderEmployees();
+        }
+    });
+
+    listEl.appendChild(noPreferenceCard);
+
+    // Mitarbeiter
+    employeesData.data.forEach(emp => {
+        if (!emp.is_active) return;
+
+        const card = document.createElement("div");
+        card.className = "flex-employee-card";
+        const empChecked = selectedEmployee === emp.id ? "checked" : "";
+
+        const initials = emp.name.split(" ").map(n => n[0]).join("");
+
+        card.innerHTML = `
+            <input type="checkbox" class="flex-employee-checkbox" ${empChecked}>
+            <div class="flex-employee-info">
+                <div class="flex-employee-avatar">${initials}</div>
+                <div class="flex-employee-details">
+                    <div class="flex-employee-name">${emp.name}</div>
+                    <div class="flex-employee-title">${emp.title}</div>
+                    <div class="flex-employee-specialties">Spezialisiert auf: ${emp.specialties.join(", ")}</div>
+                </div>
+            </div>
+        `;
+
+        const checkbox = card.querySelector(".flex-employee-checkbox");
+
+        card.addEventListener("click", (e) => {
+            if (e.target !== checkbox) {
+                checkbox.checked = !checkbox.checked;
+            }
+            if (checkbox.checked) {
+                selectedEmployee = emp.id;
+                renderEmployees();
+            }
+        });
+
+        checkbox.addEventListener("change", (e) => {
+            if (e.target.checked) {
+                selectedEmployee = emp.id;
+                renderEmployees();
+            }
+        });
+
+        listEl.appendChild(card);
+    });
+}
+
+// --- Schritt wechseln ---
+function showStep(step) {
+    document.getElementById("step-services").classList.remove("active");
+    document.getElementById("step-employee").classList.remove("active");
+    document.getElementById("step-appointment").classList.remove("active");
+    document.getElementById("step-" + step).classList.add("active");
+}
+
+// --- Dienstleistungszusammenfassung auf Mitarbeiterseite ---
+function renderServicesSummary() {
+    const summaryList = document.getElementById("services-summary-list");
+    summaryList.innerHTML = "";
+
+    let totalDuration = 0;
+    let totalPrice = 0;
+
+    selectedServices.forEach(node => {
+        const item = document.createElement("div");
+        item.className = "flex-selected-item";
+        item.style.marginBottom = "5px";
+
+        const textSpan = document.createElement("span");
+        textSpan.textContent = node.name + " (" + node.duration_minutes + " Min, " + node.price.toFixed(2) + " " + node.currency + ")";
+
+        item.appendChild(textSpan);
+        summaryList.appendChild(item);
+
+        totalDuration += node.duration_minutes;
+        totalPrice += node.price;
+    });
+
+    // Gesamtsumme anzeigen
+    const totalItem = document.createElement("div");
+    totalItem.style.marginTop = "10px";
+    totalItem.style.fontWeight = "bold";
+    totalItem.style.paddingTop = "10px";
+    totalItem.style.borderTop = "2px solid #ddd";
+    totalItem.textContent = `Gesamt: ${totalDuration} Min, ${totalPrice.toFixed(2)} EUR`;
+    summaryList.appendChild(totalItem);
+}
+
+// --- Zurück Button ---
+document.getElementById("back-to-services").addEventListener("click", () => {
+    currentStep = "services";
+    showStep(currentStep);
+});
+
+// --- Mitarbeiter bestätigen ---
+document.getElementById("confirm-employee").addEventListener("click", async () => {
+    if (!selectedEmployee) {
+        alert("Bitte wählen Sie einen Mitarbeiter aus oder wählen Sie 'Keine Präferenz'.");
+        return;
+    }
+
+    currentStep = "appointment";
+    showStep(currentStep);
+    const resolvedEmployeeId = await getAvailabilityEmployeeId();
+    await loadAvailability(resolvedEmployeeId);
+
+    // Ersten verfügbaren Tag finden
+    if (availabilityData.dates.length > 0) {
+        currentDate = availabilityData.dates[0].date;
+    }
+
+    renderAppointmentSummary();
+    renderDayView();
+});
+
+// --- Terminzusammenfassung ---
+function renderAppointmentSummary() {
+    const summaryEl = document.getElementById("appointment-summary");
+    summaryEl.innerHTML = "";
+
+    // Mitarbeiter
+    const empName = selectedEmployee === "no_preference"
+        ? `Keine Präferenz (${employeesData.data.find(e => e.id === availabilityData.employee_id)?.name || "Unbekannt"})`
+        : employeesData.data.find(e => e.id === selectedEmployee)?.name || "Unbekannt";
+
+    const empDiv = document.createElement("div");
+    empDiv.style.marginBottom = "10px";
+    empDiv.innerHTML = `<strong>Mitarbeiter:</strong> ${empName}`;
+    summaryEl.appendChild(empDiv);
+
+    // Dienstleistungen
+    const servicesDiv = document.createElement("div");
+    servicesDiv.innerHTML = "<strong>Dienstleistungen:</strong>";
+    summaryEl.appendChild(servicesDiv);
+
+    let totalDuration = 0;
+    let totalPrice = 0;
+
+    selectedServices.forEach(node => {
+        const item = document.createElement("div");
+        item.style.marginLeft = "20px";
+        item.textContent = "• " + node.name + " (" + node.duration_minutes + " Min, " + node.price.toFixed(2) + " EUR)";
+        summaryEl.appendChild(item);
+
+        totalDuration += node.duration_minutes;
+        totalPrice += node.price;
+    });
+
+    const totalDiv = document.createElement("div");
+    totalDiv.style.marginTop = "10px";
+    totalDiv.style.fontWeight = "bold";
+    totalDiv.innerHTML = `<strong>Gesamt:</strong> ${totalDuration} Min, ${totalPrice.toFixed(2)} EUR`;
+    summaryEl.appendChild(totalDiv);
+}
+
+// --- Tagesansicht rendern ---
+function renderDayView() {
+    const dateData = availabilityData.dates.find(d => d.date === currentDate);
+
+    if (!dateData) {
+        document.getElementById("timeslot-list").innerHTML = "<p>Keine Termine verfügbar für diesen Tag.</p>";
+        return;
+    }
+
+    // Datum formatieren
+    const date = new Date(currentDate + "T00:00:00");
+    const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+    document.getElementById("current-day-title").textContent = date.toLocaleDateString('de-DE', options);
+
+    const listEl = document.getElementById("timeslot-list");
+    listEl.innerHTML = "";
+
+    dateData.slots.forEach(slot => {
+        const slotDiv = document.createElement("div");
+        slotDiv.className = "flex-timeslot " + (slot.is_available ? "available" : "blocked");
+
+        if (slot.is_available) {
+            const isChecked = selectedTimeSlot &&
+                selectedTimeSlot.date === currentDate &&
+                selectedTimeSlot.start_time === slot.start_time;
+
+            slotDiv.innerHTML = `
+                <input type="checkbox" class="flex-timeslot-checkbox" ${isChecked ? "checked" : ""}>
+                <div class="flex-timeslot-time">${slot.start_time} - ${slot.end_time}</div>
+            `;
+
+            const checkbox = slotDiv.querySelector(".flex-timeslot-checkbox");
+
+            slotDiv.addEventListener("click", (e) => {
+                if (e.target !== checkbox) {
+                    checkbox.checked = !checkbox.checked;
+                }
+                if (checkbox.checked) {
+                    selectedTimeSlot = {
+                        date: currentDate,
+                        start_time: slot.start_time,
+                        end_time: slot.end_time
+                    };
+                    renderDayView();
+                } else {
+                    selectedTimeSlot = null;
+                }
+            });
+
+            checkbox.addEventListener("change", (e) => {
+                if (e.target.checked) {
+                    selectedTimeSlot = {
+                        date: currentDate,
+                        start_time: slot.start_time,
+                        end_time: slot.end_time
+                    };
+                    renderDayView();
+                } else {
+                    selectedTimeSlot = null;
+                }
+            });
+        } else {
+            slotDiv.innerHTML = `
+                <input type="checkbox" class="flex-timeslot-checkbox" disabled>
+                <div class="flex-timeslot-time">${slot.start_time} - ${slot.end_time} (Besetzt)</div>
+            `;
+        }
+
+        listEl.appendChild(slotDiv);
+    });
+}
+
+// --- Monatsansicht rendern ---
+function renderMonthView() {
+    const date = new Date(currentDate + "T00:00:00");
+    const year = date.getFullYear();
+    const month = date.getMonth();
+
+    const monthNames = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+    document.getElementById("current-month-title").textContent = monthNames[month] + " " + year;
+
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const startDay = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1;
+
+    const gridEl = document.getElementById("month-grid");
+    gridEl.innerHTML = "";
+
+    // Leere Zellen vor dem ersten Tag
+    for (let i = 0; i < startDay; i++) {
+        const emptyDiv = document.createElement("div");
+        emptyDiv.className = "flex-month-day empty";
+        gridEl.appendChild(emptyDiv);
+    }
+
+    // Tage des Monats
+    for (let day = 1; day <= lastDay.getDate(); day++) {
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const dayData = availabilityData.dates.find(d => d.date === dateStr);
+        const hasAvailableSlots = dayData && dayData.slots.some(s => s.is_available);
+
+        const dayDiv = document.createElement("div");
+        dayDiv.className = "flex-month-day";
+        dayDiv.textContent = day;
+
+        if (hasAvailableSlots) {
+            dayDiv.classList.add("has-slots");
+            dayDiv.addEventListener("click", () => {
+                currentDate = dateStr;
+                calendarView = "day";
+                document.getElementById("view-day").classList.add("active");
+                document.getElementById("view-month").classList.remove("active");
+                document.getElementById("day-view").style.display = "block";
+                document.getElementById("month-view").style.display = "none";
+                renderDayView();
+            });
+        } else {
+            dayDiv.classList.add("no-slots");
+        }
+
+        gridEl.appendChild(dayDiv);
+    }
+}
+
+// --- View Toggle ---
+document.getElementById("view-day").addEventListener("click", () => {
+    calendarView = "day";
+    document.getElementById("view-day").classList.add("active");
+    document.getElementById("view-month").classList.remove("active");
+    document.getElementById("day-view").style.display = "block";
+    document.getElementById("month-view").style.display = "none";
+});
+
+document.getElementById("view-month").addEventListener("click", () => {
+    calendarView = "month";
+    document.getElementById("view-month").classList.add("active");
+    document.getElementById("view-day").classList.remove("active");
+    document.getElementById("day-view").style.display = "none";
+    document.getElementById("month-view").style.display = "block";
+    renderMonthView();
+});
+
+// --- Tag Navigation ---
+document.getElementById("prev-day").addEventListener("click", () => {
+    const currentIndex = availabilityData.dates.findIndex(d => d.date === currentDate);
+    if (currentIndex > 0) {
+        currentDate = availabilityData.dates[currentIndex - 1].date;
+        renderDayView();
+    }
+});
+
+document.getElementById("next-day").addEventListener("click", () => {
+    const currentIndex = availabilityData.dates.findIndex(d => d.date === currentDate);
+    if (currentIndex < availabilityData.dates.length - 1) {
+        currentDate = availabilityData.dates[currentIndex + 1].date;
+        renderDayView();
+    }
+});
+
+// --- Monat Navigation ---
+document.getElementById("prev-month").addEventListener("click", () => {
+    const date = new Date(currentDate + "T00:00:00");
+    date.setMonth(date.getMonth() - 1);
+    currentDate = date.toISOString().split('T')[0];
+    renderMonthView();
+});
+
+document.getElementById("next-month").addEventListener("click", () => {
+    const date = new Date(currentDate + "T00:00:00");
+    date.setMonth(date.getMonth() + 1);
+    currentDate = date.toISOString().split('T')[0];
+    renderMonthView();
+});
+
+// --- Zurück zu Mitarbeiter ---
+document.getElementById("back-to-employee").addEventListener("click", () => {
+    currentStep = "employee";
+    showStep(currentStep);
+});
+
+// --- Termin buchen ---
+document.getElementById("confirm-appointment").addEventListener("click", async () => {
+    if (!selectedTimeSlot) {
+        alert("Bitte wählen Sie einen Zeitslot aus.");
+        return;
+    }
+
+    const services = Array.from(selectedServices.values()).map(s => s.name);
+    const resolvedEmployeeId = await getAvailabilityEmployeeId();
+    // Keine Präferenz wird hier durch den "besten" mitarbeiter ersätzt je nach dienstleistung
+    const employeeName = selectedEmployee === "no_preference"
+        ? employeesData.data.find(e => e.id === resolvedEmployeeId)?.name || "Unbekannt"
+        : employeesData.data.find(e => e.id === selectedEmployee)?.name || "Unbekannt";
+
+    // Calculate total duration and price
+    let totalDuration = 0;
+    let totalPrice = 0;
+    selectedServices.forEach(service => {
+        totalDuration += service.duration_minutes;
+        totalPrice += service.price;
+    });
+
+    const payload = {
+        date: selectedTimeSlot.date,
+        start_time: selectedTimeSlot.start_time,
+        end_time: selectedTimeSlot.end_time,
+        employee_name: employeeName,
+        employee_id: selectedEmployee === "no_preference" ? resolvedEmployeeId : selectedEmployee,
+        services: services,
+        total_duration_minutes: totalDuration,
+        total_price: totalPrice
+    };
+    // --- An api senden mit dem derzeitig eingeloggten user ---
+    try {
+        const token = localStorage.getItem('token');
+        const res = await fetch('/api/appointments', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': token ? `Bearer ${token}` : '',
+            },
+            body: JSON.stringify(payload),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+            throw new Error(data.error || 'Termin konnte nicht gesendet werden.');
+        }
+
+        // --- Nachdem ein Termin gebucht wurde wird er belegt und dann die seite neu geladen ---
+        await loadAvailability(await getAvailabilityEmployeeId());
+        await loadUserAppointments();
+        resetBookingFlow();
+
+        alert(`Termin gesendet!\n\n${JSON.stringify(data, null, 2)}`);
+    } catch (error) {
+        alert(`Fehler: ${error.message}`);
+    }
+});
+
+// --- Initial render ---
+render(servicesTree.data);
