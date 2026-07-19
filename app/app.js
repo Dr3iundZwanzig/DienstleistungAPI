@@ -1,15 +1,25 @@
 document.addEventListener('DOMContentLoaded', async () => {
-    const token = localStorage.getItem('token');
+    const token = getAccessToken();
+    const refreshToken = getRefreshToken();
 
     await loadEmployees();
 
     await loadAvailability(await getAvailabilityEmployeeId());
 
-    if (token) {
-        await showAuthenticatedState();
-    } else {
-        showLoggedOutState();
+    if (!token && refreshToken) {
+        const refreshed = await refreshAccessToken();
+        if (!refreshed) {
+            logout();
+            return;
+        }
     }
+
+    if (hasAuthSession()) {
+        await showAuthenticatedState();
+        return;
+    }
+
+    showLoggedOutState();
 });
 // Termine neu laden (api request)
 document.getElementById('refresh-appointments').addEventListener('click', async () => {
@@ -33,25 +43,166 @@ document.getElementById('login-form').addEventListener('submit', async (event) =
     await login();
 });
 
+document.getElementById('logout-button').addEventListener('click', () => {
+    logout();
+});
+
 let toastTimeoutId = null;
 let appointmentsVisible = false;
+let refreshRequestPromise = null;
+
+function getAccessToken() {
+    return localStorage.getItem('token');
+}
+
+function getRefreshToken() {
+    return localStorage.getItem('refresh_token');
+}
+
+// speichert beider tokens zentral im localStorage
+function persistAuthTokens(accessToken, refreshToken) {
+    if (accessToken) {
+        localStorage.setItem('token', accessToken);
+    }
+    if (refreshToken) {
+        localStorage.setItem('refresh_token', refreshToken);
+    }
+}
+// local beide tokens löschen
+function clearAuthTokens() {
+    localStorage.removeItem('token');
+    localStorage.removeItem('refresh_token');
+}
+// prüfen das beide tokens vorhanden sond
+function hasAuthSession() {
+    return Boolean(getAccessToken() || getRefreshToken());
+}
+
+let revokeInFlight = false;
+// api request um den refresh token ungültig zu machen
+async function revokeRefreshTokenSilently(refreshToken) {
+    if (!refreshToken || revokeInFlight) {
+        return;
+    }
+
+    revokeInFlight = true;
+    try {
+        await fetch('/api/revoke', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${refreshToken}`,
+            },
+        });
+    } catch (_) {
+        // user wird ausgeloggt auch wenn das backend nicht erreichbar ist oder /api/revoke nicht klappt
+    } finally {
+        revokeInFlight = false;
+    }
+}
 
 function isApiRequest(input) {
     const requestUrl = typeof input === 'string'
         ? input
         : (input && typeof input.url === 'string' ? input.url : '');
 
+    // filtert auf backend api requests damit 401 handling nur dort greift.
     return requestUrl.startsWith('/api') || requestUrl.includes('/api/');
 }
-// wenn api "Unauthorized" als response hat wird der user ausgeloggt
-async function apiFetch(input, init) {
-    const res = await fetch(input, init);
-
-    if (isApiRequest(input) && res.status === 401) {
-        logout();
+// Authorization header für die api
+function makeAuthHeaders(existingHeaders, token) {
+    const headers = new Headers(existingHeaders || {});
+    if (token) {
+        headers.set('Authorization', `Bearer ${token}`);
+    }
+    return headers;
+}
+// wenn der access token nach der angegebenen zeit ausläuft wird ein neuer angefordert mit dem refresh token solange der noch gültig ist
+async function refreshAccessToken() {
+    if (refreshRequestPromise) {
+        return refreshRequestPromise;
     }
 
-    return res;
+    refreshRequestPromise = (async () => {
+        const refreshToken = getRefreshToken();
+        if (!refreshToken) {
+            return false;
+        }
+
+        const refreshRes = await fetch('/api/refresh', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${refreshToken}`,
+            },
+        });
+
+        if (!refreshRes.ok) {
+            return false;
+        }
+
+        const data = await refreshRes.json();
+        if (!data || !data.token) {
+            return false;
+        }
+
+        persistAuthTokens(data.token, null);
+        return true;
+    })();
+
+    try {
+        return await refreshRequestPromise;
+    } finally {
+        refreshRequestPromise = null;
+    }
+}
+
+function isAuthPath(input) {
+    const requestUrl = typeof input === 'string'
+        ? input
+        : (input && typeof input.url === 'string' ? input.url : '');
+    // nur auth endpoints sollten hir sein um refresh/retry loops zu vermeiden
+    return requestUrl.startsWith('/api/login') || requestUrl.startsWith('/api/users') || requestUrl.startsWith('/api/refresh');
+}
+
+// Bei 401 wird einmal versucht den Access Token zu erneuern und die Request zu wiederholen
+async function apiFetch(input, init, options = {}) {
+    const config = init || {};
+    const shouldAttachAuth = options.attachAuth === true;
+    const canAttemptRefresh = options.allowRefresh !== false;
+
+    const firstHeaders = shouldAttachAuth
+        ? makeAuthHeaders(config.headers, getAccessToken())
+        : new Headers(config.headers || {});
+
+    const firstRequestInit = {
+        ...config,
+        headers: firstHeaders,
+    };
+
+    const firstRes = await fetch(input, firstRequestInit);
+
+    if (!isApiRequest(input) || firstRes.status !== 401 || !canAttemptRefresh || isAuthPath(input)) {
+        if (isApiRequest(input) && firstRes.status === 401 && !isAuthPath(input)) {
+            logout();
+        }
+        return firstRes;
+    }
+
+    const refreshed = await refreshAccessToken();
+    if (!refreshed) {
+        logout();
+        return firstRes;
+    }
+
+    const retryHeaders = shouldAttachAuth
+        ? makeAuthHeaders(config.headers, getAccessToken())
+        : new Headers(config.headers || {});
+
+    const retryRequestInit = {
+        ...config,
+        headers: retryHeaders,
+    };
+
+    return fetch(input, retryRequestInit);
 }
 // user anmeldung
 async function login() {
@@ -72,7 +223,7 @@ async function login() {
         }
 
         if (data.token) {
-            localStorage.setItem('token', data.token);
+            persistAuthTokens(data.token, data.refresh_token || null);
             await showAuthenticatedState();
         } else {
             alert('Login failed. Please check your credentials.');
@@ -106,7 +257,9 @@ async function signup() {
 }
 
 function logout() {
-    localStorage.removeItem('token');
+    const refreshToken = getRefreshToken();
+    void revokeRefreshTokenSilently(refreshToken);
+    clearAuthTokens();
     showLoggedOutState();
 }
 //  ansicht für nicht eingeloggte user
@@ -223,8 +376,7 @@ function renderUserAppointments(appointments) {
 }
 // einen termin löschen 
 async function cancelAppointment(appointmentId) {
-    const token = localStorage.getItem('token');
-    if (!token) {
+    if (!hasAuthSession()) {
         showLoggedOutState();
         return;
     }
@@ -237,9 +389,8 @@ async function cancelAppointment(appointmentId) {
     try {
         const res = await apiFetch(`/api/appointments/${encodeURIComponent(appointmentId)}`, {
             method: 'DELETE',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-            },
+        }, {
+            attachAuth: true,
         });
 
         const data = await res.json();
@@ -256,8 +407,7 @@ async function cancelAppointment(appointmentId) {
 }
 // alle termine löschen
 async function cancleAllAppointments() {
-    const token = localStorage.getItem('token');
-    if (!token) {
+    if (!hasAuthSession()) {
         showLoggedOutState();
         return;
     }
@@ -270,9 +420,8 @@ async function cancleAllAppointments() {
     try {
         const res = await apiFetch(`/api/appointments/delete`, {
             method: 'DELETE',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-            },
+        }, {
+            attachAuth: true,
         });
 
         const data = await res.json();
@@ -289,17 +438,14 @@ async function cancleAllAppointments() {
 }
 // termine des users durch api von der datenbank laden
 async function loadUserAppointments() {
-    const token = localStorage.getItem('token');
-    if (!token) {
+    if (!hasAuthSession()) {
         showLoggedOutState();
         return;
     }
 
     try {
-        const res = await apiFetch('/api/appointments', {
-            headers: {
-                'Authorization': `Bearer ${token}`,
-            },
+        const res = await apiFetch('/api/appointments', {}, {
+            attachAuth: true,
         });
 
         const data = await res.json();
@@ -1036,14 +1182,14 @@ document.getElementById("confirm-appointment").addEventListener("click", async (
     };
     // --- An api senden mit dem derzeitig eingeloggten user ---
     try {
-        const token = localStorage.getItem('token');
         const res = await apiFetch('/api/appointments', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': token ? `Bearer ${token}` : '',
             },
             body: JSON.stringify(payload),
+        }, {
+            attachAuth: true,
         });
 
         const data = await res.json();

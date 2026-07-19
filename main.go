@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/Dr3iundZwanzig/DienstleistungAPI/database"
 	"github.com/joho/godotenv"
@@ -11,11 +12,31 @@ import (
 )
 
 type apiConfig struct {
-	db           database.Client
-	jwtSecret    string
-	platform     string
-	filepathRoot string
-	port         string
+	db                      database.Client
+	jwtSecret               string
+	platform                string
+	filepathRoot            string
+	port                    string
+	accessTokenTTL          time.Duration
+	refreshTokenTTL         time.Duration
+	refreshedAccessTokenTTL time.Duration
+}
+
+func readDurationEnvOrDefault(envName string, fallback time.Duration) time.Duration {
+	raw := os.Getenv(envName)
+	if raw == "" {
+		return fallback
+	}
+
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		log.Fatalf("%s has invalid duration %q: %v", envName, raw, err)
+	}
+	if d <= 0 {
+		log.Fatalf("%s must be > 0, got %q", envName, raw)
+	}
+
+	return d
 }
 
 func main() {
@@ -51,12 +72,19 @@ func main() {
 		log.Fatal("PORT environment variable is not set")
 	}
 
+	accessTokenTTL := readDurationEnvOrDefault("ACCESS_TOKEN_TTL", time.Hour*24*30)
+	refreshTokenTTL := readDurationEnvOrDefault("REFRESH_TOKEN_TTL", time.Hour*24*60)
+	refreshedAccessTokenTTL := readDurationEnvOrDefault("REFRESH_ACCESS_TOKEN_TTL", time.Hour)
+
 	cfg := apiConfig{
-		db:           db,
-		jwtSecret:    jwtSecret,
-		platform:     platform,
-		filepathRoot: filepathRoot,
-		port:         port,
+		db:                      db,
+		jwtSecret:               jwtSecret,
+		platform:                platform,
+		filepathRoot:            filepathRoot,
+		port:                    port,
+		accessTokenTTL:          accessTokenTTL,
+		refreshTokenTTL:         refreshTokenTTL,
+		refreshedAccessTokenTTL: refreshedAccessTokenTTL,
 	}
 
 	mux := http.NewServeMux()

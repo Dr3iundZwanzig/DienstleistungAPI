@@ -110,18 +110,6 @@ func (c *Client) autoMigrate() error {
 	if err != nil {
 		return err
 	}
-
-	// Migration: Add new columns if they don't exist
-	addColumnsSQL := `
-	ALTER TABLE appointments ADD COLUMN total_duration_minutes INTEGER DEFAULT 0;
-	`
-	c.db.Exec(addColumnsSQL) // Ignore error if column already exists
-
-	addPriceSQL := `
-	ALTER TABLE appointments ADD COLUMN total_price REAL DEFAULT 0.0;
-	`
-	c.db.Exec(addPriceSQL) // Ignore error if column already exists
-
 	return nil
 }
 

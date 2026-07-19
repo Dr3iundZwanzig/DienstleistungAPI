@@ -52,7 +52,7 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 	accessToken, err := auth.MakeJWT(
 		user.ID,
 		cfg.jwtSecret,
-		time.Hour*24*30,
+		cfg.accessTokenTTL,
 	)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't create access JWT", err)
@@ -68,7 +68,7 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 	_, err = cfg.db.CreateRefreshToken(database.CreateRefreshTokenParams{
 		UserID:    user.ID,
 		Token:     refreshToken,
-		ExpiresAt: time.Now().UTC().Add(time.Hour * 24 * 60),
+		ExpiresAt: time.Now().UTC().Add(cfg.refreshTokenTTL),
 	})
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't save refresh token", err)

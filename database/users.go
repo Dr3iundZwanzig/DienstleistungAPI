@@ -79,6 +79,8 @@ func (c Client) GetUserByRefreshToken(token string) (*User, error) {
 		FROM users u
 		JOIN refresh_tokens rt ON u.id = rt.user_id
 		WHERE rt.token = ?
+		  AND rt.revoked_at IS NULL
+		  AND julianday(rt.expires_at) > julianday('now')
 	`
 
 	var user User
