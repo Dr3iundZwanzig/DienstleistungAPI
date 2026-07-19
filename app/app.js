@@ -3,13 +3,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     await loadEmployees();
 
-
-    // --- Mitarbeiter daten an die db senden einmalig für die aufgabe vereinfacht kann später durch eigene mitarbeiter seite verwalted werden---
-    if (!localStorage.getItem('employeesSeeded')) {
-        await seedEmployees();
-        localStorage.setItem('employeesSeeded', 'true');
-    }
-
     await loadAvailability(await getAvailabilityEmployeeId());
 
     if (token) {
@@ -43,12 +36,30 @@ document.getElementById('login-form').addEventListener('submit', async (event) =
 let toastTimeoutId = null;
 let appointmentsVisible = false;
 
+function isApiRequest(input) {
+    const requestUrl = typeof input === 'string'
+        ? input
+        : (input && typeof input.url === 'string' ? input.url : '');
+
+    return requestUrl.startsWith('/api') || requestUrl.includes('/api/');
+}
+// wenn api "Unauthorized" als response hat wird der user ausgeloggt
+async function apiFetch(input, init) {
+    const res = await fetch(input, init);
+
+    if (isApiRequest(input) && res.status === 401) {
+        logout();
+    }
+
+    return res;
+}
+// user anmeldung
 async function login() {
     const email = document.getElementById('email').value;
     const password = document.getElementById('password').value;
 
     try {
-        const res = await fetch('/api/login', {
+        const res = await apiFetch('/api/login', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -70,13 +81,13 @@ async function login() {
         alert(`Error: ${error.message}`);
     }
 }
-
+// user account registrierung
 async function signup() {
     const email = document.getElementById('email').value;
     const password = document.getElementById('password').value;
 
     try {
-        const res = await fetch('/api/users', {
+        const res = await apiFetch('/api/users', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -98,7 +109,7 @@ function logout() {
     localStorage.removeItem('token');
     showLoggedOutState();
 }
-
+//  ansicht für nicht eingeloggte user
 function showLoggedOutState() {
     document.getElementById('auth-section').style.display = 'block';
     document.getElementById('toggle-appointments').style.display = 'none';
@@ -107,14 +118,14 @@ function showLoggedOutState() {
     setAppointmentsFeedback('');
     document.getElementById('appointments-list').innerHTML = '';
 }
-
+// ansicht für eingeloggte user
 async function showAuthenticatedState() {
     document.getElementById('auth-section').style.display = 'none';
     document.getElementById('toggle-appointments').style.display = 'inline-block';
     setAppointmentsPanelVisible(false);
     document.getElementById('step-services').style.display = 'block';
 }
-
+// termine für den user anzeigen
 function setAppointmentsPanelVisible(visible) {
     appointmentsVisible = visible;
 
@@ -127,7 +138,7 @@ function setAppointmentsPanelVisible(visible) {
         document.getElementById('appointments-list').innerHTML = '';
     }
 }
-
+// feedback nachdem ein Termin gelöscht wurde
 function setAppointmentsFeedback(message, isError = false) {
     const feedbackEl = document.getElementById('toast');
 
@@ -161,7 +172,7 @@ function formatAppointmentDate(dateString) {
         year: 'numeric'
     });
 }
-
+// termine des nutzers laden
 function renderUserAppointments(appointments) {
     const listEl = document.getElementById('appointments-list');
     listEl.innerHTML = '';
@@ -210,7 +221,7 @@ function renderUserAppointments(appointments) {
         listEl.appendChild(card);
     });
 }
-
+// einen termin löschen 
 async function cancelAppointment(appointmentId) {
     const token = localStorage.getItem('token');
     if (!token) {
@@ -224,18 +235,12 @@ async function cancelAppointment(appointmentId) {
     }
 
     try {
-        const res = await fetch(`/api/appointments/${encodeURIComponent(appointmentId)}`, {
+        const res = await apiFetch(`/api/appointments/${encodeURIComponent(appointmentId)}`, {
             method: 'DELETE',
             headers: {
                 'Authorization': `Bearer ${token}`,
             },
         });
-
-        if (res.status === 401) {
-            localStorage.removeItem('token');
-            showLoggedOutState();
-            return;
-        }
 
         const data = await res.json();
         if (!res.ok) {
@@ -249,7 +254,7 @@ async function cancelAppointment(appointmentId) {
         setAppointmentsFeedback(`Fehler beim Stornieren: ${error.message}`, true);
     }
 }
-
+// alle termine löschen
 async function cancleAllAppointments() {
     const token = localStorage.getItem('token');
     if (!token) {
@@ -263,18 +268,12 @@ async function cancleAllAppointments() {
     }
 
     try {
-        const res = await fetch(`/api/appointments/delete`, {
+        const res = await apiFetch(`/api/appointments/delete`, {
             method: 'DELETE',
             headers: {
                 'Authorization': `Bearer ${token}`,
             },
         });
-
-        if (res.status === 401) {
-            localStorage.removeItem('token');
-            showLoggedOutState();
-            return;
-        }
 
         const data = await res.json();
         if (!res.ok) {
@@ -288,7 +287,7 @@ async function cancleAllAppointments() {
         setAppointmentsFeedback(`Fehler beim Stornieren: ${error.message}`, true);
     }
 }
-
+// termine des users durch api von der datenbank laden
 async function loadUserAppointments() {
     const token = localStorage.getItem('token');
     if (!token) {
@@ -297,17 +296,11 @@ async function loadUserAppointments() {
     }
 
     try {
-        const res = await fetch('/api/appointments', {
+        const res = await apiFetch('/api/appointments', {
             headers: {
                 'Authorization': `Bearer ${token}`,
             },
         });
-
-        if (res.status === 401) {
-            localStorage.removeItem('token');
-            showLoggedOutState();
-            return;
-        }
 
         const data = await res.json();
         if (!res.ok) {
@@ -392,7 +385,7 @@ let employeesData = { data: [] };
 // --- Mitarbeiter daten von der db laden---
 async function loadEmployees() {
     try {
-        const res = await fetch('/api/employees');
+        const res = await apiFetch('/api/employees');
         if (!res.ok) {
             throw new Error('Could not load employees');
         }
@@ -403,52 +396,6 @@ async function loadEmployees() {
         employeesData = { data: [] };
     }
 }
-// --- Mitarbeiter daten zu db senden ---
-async function seedEmployees() {
-    const payload = {
-        data: [
-            {
-                id: 'emp_001',
-                name: 'Anna Müller',
-                title: 'Friseurmeisterin',
-                specialties: ['Haarschnitt', 'Farbbehandlung'],
-                is_active: true
-            },
-            {
-                id: 'emp_002',
-                name: 'Thomas Schmidt',
-                title: 'Friseur',
-                specialties: ['Haarschnitt', 'Bartpflege'],
-                is_active: true
-            },
-            {
-                id: 'emp_003',
-                name: 'Sarah Weber',
-                title: 'Kosmetikerin',
-                specialties: ['Maniküre', 'Gesichtsbehandlung'],
-                is_active: true
-            },
-            {
-                id: 'emp_004',
-                name: 'Michael Klein',
-                title: 'Barbier',
-                specialties: ['Bartpflege', 'Haarschnitt'],
-                is_active: true
-            }
-        ]
-    };
-
-    try {
-        await fetch('/api/employees/seed', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-    } catch (error) {
-        console.error('Failed to seed employees', error);
-    }
-}
-
 // --- Termine sind nun im backend ---
 let availabilityData = {
     employee_id: null,
@@ -463,7 +410,7 @@ async function getAvailabilityEmployeeId() {
     if (selectedEmployee === 'no_preference') {
         const serviceNames = Array.from(selectedServices.values()).map(service => service.name);
         try {
-            const res = await fetch('/api/employees/resolve', {
+            const res = await apiFetch('/api/employees/resolve', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ services: serviceNames })
@@ -490,7 +437,7 @@ async function loadAvailability(employeeId) {
     }
 
     try {
-        const res = await fetch(`/api/availability?employee_id=${encodeURIComponent(employeeId)}`);
+        const res = await apiFetch(`/api/availability?employee_id=${encodeURIComponent(employeeId)}`);
         if (!res.ok) {
             throw new Error('Could not load availability');
         }
@@ -1090,7 +1037,7 @@ document.getElementById("confirm-appointment").addEventListener("click", async (
     // --- An api senden mit dem derzeitig eingeloggten user ---
     try {
         const token = localStorage.getItem('token');
-        const res = await fetch('/api/appointments', {
+        const res = await apiFetch('/api/appointments', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

@@ -2,12 +2,19 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/Dr3iundZwanzig/DienstleistungAPI/database"
 )
+
+type employeeSeedPayload struct {
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Title       string   `json:"title"`
+	Specialties []string `json:"specialties"`
+	IsActive    bool     `json:"is_active"`
+}
 
 func (cfg *apiConfig) handlerEmployeesList(w http.ResponseWriter, r *http.Request) {
 	employees, err := cfg.db.GetEmployees()
@@ -40,26 +47,31 @@ func (cfg *apiConfig) handlerEmployeesResolve(w http.ResponseWriter, r *http.Req
 	respondWithJSON(w, http.StatusOK, map[string]string{"employee_id": employeeID})
 }
 
-func (cfg *apiConfig) handlerEmployeesSeed(w http.ResponseWriter, r *http.Request) {
-	type employeePayload struct {
-		ID          string   `json:"id"`
-		Name        string   `json:"name"`
-		Title       string   `json:"title"`
-		Specialties []string `json:"specialties"`
-		IsActive    bool     `json:"is_active"`
-	}
-
-	var payload struct {
-		Data []employeePayload `json:"data"`
-	}
-
-	decoder := json.NewDecoder(r.Body)
-	if err := decoder.Decode(&payload); err != nil {
-		respondWithError(w, http.StatusBadRequest, "Couldn't decode employee data", err)
+func (cfg *apiConfig) handlerTestResetAndSeed(w http.ResponseWriter, r *http.Request) {
+	if cfg.platform != "dev" && cfg.platform != "test" {
+		respondWithError(w, http.StatusForbidden, "Test reset is only available in dev or test", nil)
 		return
 	}
 
-	for _, employee := range payload.Data {
+	if err := cfg.db.Reset(); err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't reset database", err)
+		return
+	}
+
+	seedData := defaultSeedEmployees()
+	if err := cfg.seedEmployees(seedData); err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't seed default test data", err)
+		return
+	}
+
+	respondWithJSON(w, http.StatusCreated, map[string]any{
+		"message":          "Database reset and test data seeded",
+		"seeded_employees": len(seedData),
+	})
+}
+
+func (cfg *apiConfig) seedEmployees(employees []employeeSeedPayload) error {
+	for _, employee := range employees {
 		_, err := cfg.db.CreateEmployee(database.CreateEmployeeParams{
 			ID:          employee.ID,
 			Name:        employee.Name,
@@ -68,8 +80,7 @@ func (cfg *apiConfig) handlerEmployeesSeed(w http.ResponseWriter, r *http.Reques
 			IsActive:    employee.IsActive,
 		})
 		if err != nil {
-			respondWithError(w, http.StatusInternalServerError, "Couldn't save employee", err)
-			return
+			return err
 		}
 
 		_, err = cfg.db.CreateAvailability(database.CreateAvailabilityParams{
@@ -77,12 +88,37 @@ func (cfg *apiConfig) handlerEmployeesSeed(w http.ResponseWriter, r *http.Reques
 			Dates:      buildSeedAvailabilityDates(),
 		})
 		if err != nil {
-			respondWithError(w, http.StatusInternalServerError, "Couldn't save availability for employee", err)
-			return
+			return err
 		}
 	}
-	fmt.Print("employee data seeded")
-	respondWithJSON(w, http.StatusCreated, map[string]string{"message": "Employees seeded"})
+
+	return nil
+}
+
+func defaultSeedEmployees() []employeeSeedPayload {
+	return []employeeSeedPayload{
+		{
+			ID:          "emp_anna",
+			Name:        "Anna Weber",
+			Title:       "Senior Stylist",
+			Specialties: []string{"Haarschnitt", "Farbe"},
+			IsActive:    true,
+		},
+		{
+			ID:          "emp_ben",
+			Name:        "Ben Kruger",
+			Title:       "Barber",
+			Specialties: []string{"Fade", "Bart"},
+			IsActive:    true,
+		},
+		{
+			ID:          "emp_carla",
+			Name:        "Carla Neumann",
+			Title:       "Color Specialist",
+			Specialties: []string{"Balayage", "Farbberatung"},
+			IsActive:    true,
+		},
+	}
 }
 
 func buildSeedAvailabilityDates() []database.AvailabilityDate {

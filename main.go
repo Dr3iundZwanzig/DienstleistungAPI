@@ -75,7 +75,7 @@ func main() {
 	mux.HandleFunc("POST /api/availability", cfg.handlerAvailabilityCreate)
 	mux.HandleFunc("GET /api/employees", cfg.handlerEmployeesList)
 	mux.HandleFunc("POST /api/employees/resolve", cfg.handlerEmployeesResolve)
-	mux.HandleFunc("POST /api/employees/seed", cfg.handlerEmployeesSeed)
+	mux.HandleFunc("POST /api/test/reset-and-seed", cfg.handlerTestResetAndSeed)
 	mux.HandleFunc("DELETE /api/appointments/delete", cfg.handlerAppointmentsCancelAll)
 
 	srv := &http.Server{

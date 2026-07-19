@@ -16,6 +16,9 @@ func NewClient(pathToDB string) (Client, error) {
 	if err != nil {
 		return Client{}, err
 	}
+	if _, err = db.Exec("PRAGMA foreign_keys = ON;"); err != nil {
+		return Client{}, err
+	}
 	c := Client{db}
 	err = c.autoMigrate()
 	if err != nil {
@@ -47,7 +50,7 @@ func (c *Client) autoMigrate() error {
 		revoked_at TIMESTAMP,
 		user_id TEXT NOT NULL,
 		expires_at TIMESTAMP NOT NULL,
-		FOREIGN KEY(user_id) REFERENCES users(id)
+		FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 	);
 	`
 	_, err = c.db.Exec(refreshTokenTable)
@@ -77,7 +80,7 @@ func (c *Client) autoMigrate() error {
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		data TEXT NOT NULL,
-		FOREIGN KEY(employee_id) REFERENCES employees(id)
+		FOREIGN KEY(employee_id) REFERENCES employees(id) ON DELETE CASCADE
 	);
 	`
 	_, err = c.db.Exec(availabilityTable)
@@ -99,8 +102,8 @@ func (c *Client) autoMigrate() error {
 		services TEXT NOT NULL,
 		total_duration_minutes INTEGER DEFAULT 0,
 		total_price REAL DEFAULT 0.0,
-		FOREIGN KEY(employee_id) REFERENCES employees(id),
-		FOREIGN KEY(user_id) REFERENCES users(id)
+		FOREIGN KEY(employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+		FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 	);
 	`
 	_, err = c.db.Exec(appointmentTable)
