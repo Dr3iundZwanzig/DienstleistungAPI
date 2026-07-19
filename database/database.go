@@ -126,20 +126,20 @@ func (c *Client) autoMigrate() error {
 }
 
 func (c Client) Reset() error {
-	if _, err := c.db.Exec("DELETE FROM refresh_tokens"); err != nil {
-		return fmt.Errorf("failed to reset table refresh_tokens: %w", err)
-	}
-	if _, err := c.db.Exec("DELETE FROM users"); err != nil {
-		return fmt.Errorf("failed to reset table users: %w", err)
-	}
-	if _, err := c.db.Exec("DELETE FROM employees"); err != nil {
-		return fmt.Errorf("failed to reset table employees: %w", err)
+	if _, err := c.db.Exec("DELETE FROM appointments"); err != nil {
+		return fmt.Errorf("failed to reset table appointments: %w", err)
 	}
 	if _, err := c.db.Exec("DELETE FROM availability"); err != nil {
 		return fmt.Errorf("failed to reset table availability: %w", err)
 	}
-	if _, err := c.db.Exec("DELETE FROM appointments"); err != nil {
-		return fmt.Errorf("failed to reset table appointments: %w", err)
+	if _, err := c.db.Exec("DELETE FROM refresh_tokens"); err != nil {
+		return fmt.Errorf("failed to reset table refresh_tokens: %w", err)
+	}
+	if _, err := c.db.Exec("DELETE FROM employees"); err != nil {
+		return fmt.Errorf("failed to reset table employees: %w", err)
+	}
+	if _, err := c.db.Exec("DELETE FROM users"); err != nil {
+		return fmt.Errorf("failed to reset table users: %w", err)
 	}
 	return nil
 }

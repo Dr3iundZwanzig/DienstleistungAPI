@@ -47,6 +47,7 @@ func (cfg *apiConfig) handlerEmployeesResolve(w http.ResponseWriter, r *http.Req
 	respondWithJSON(w, http.StatusOK, map[string]string{"employee_id": employeeID})
 }
 
+// datenbank nur für tests zurücksetzen und wieder mit neuen test daten füllen user daten werden auch gelöcht
 func (cfg *apiConfig) handlerTestResetAndSeed(w http.ResponseWriter, r *http.Request) {
 	if cfg.platform != "dev" && cfg.platform != "test" {
 		respondWithError(w, http.StatusForbidden, "Test reset is only available in dev or test", nil)
@@ -95,32 +96,41 @@ func (cfg *apiConfig) seedEmployees(employees []employeeSeedPayload) error {
 	return nil
 }
 
+// datenbank test daten für die aufgabe
 func defaultSeedEmployees() []employeeSeedPayload {
 	return []employeeSeedPayload{
 		{
-			ID:          "emp_anna",
-			Name:        "Anna Weber",
-			Title:       "Senior Stylist",
-			Specialties: []string{"Haarschnitt", "Farbe"},
+			ID:          "emp_001",
+			Name:        "Anna Müller",
+			Title:       "Friseurmeisterin",
+			Specialties: []string{"Haarschnitt", "Farbbehandlung"},
 			IsActive:    true,
 		},
 		{
-			ID:          "emp_ben",
-			Name:        "Ben Kruger",
-			Title:       "Barber",
-			Specialties: []string{"Fade", "Bart"},
+			ID:          "emp_002",
+			Name:        "Thomas Schmidt",
+			Title:       "Friseur",
+			Specialties: []string{"Haarschnitt", "Bartpflege"},
 			IsActive:    true,
 		},
 		{
-			ID:          "emp_carla",
-			Name:        "Carla Neumann",
-			Title:       "Color Specialist",
-			Specialties: []string{"Balayage", "Farbberatung"},
+			ID:          "emp_003",
+			Name:        "Sarah Weber",
+			Title:       "Kosmetikerin",
+			Specialties: []string{"Maniküre", "Gesichtsbehandlung"},
+			IsActive:    true,
+		},
+		{
+			ID:          "emp_004",
+			Name:        "Michael Klein",
+			Title:       "Barbier",
+			Specialties: []string{"Bartpflege", "Haarschnitt"},
 			IsActive:    true,
 		},
 	}
 }
 
+// datenbank test daten für die aufgabe
 func buildSeedAvailabilityDates() []database.AvailabilityDate {
 	start := time.Now().AddDate(0, 0, 2)
 	baseDate := time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, time.UTC)

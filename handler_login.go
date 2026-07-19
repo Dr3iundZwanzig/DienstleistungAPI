@@ -7,6 +7,7 @@ import (
 
 	"github.com/Dr3iundZwanzig/DienstleistungAPI/auth"
 	"github.com/Dr3iundZwanzig/DienstleistungAPI/database"
+	"github.com/google/uuid"
 )
 
 func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
@@ -31,6 +32,10 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 	user, err := cfg.db.GetUserByEmail(params.Email)
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "Incorrect email or password", err)
+		return
+	}
+	if user.ID == uuid.Nil || user.Password == "" {
+		respondWithError(w, http.StatusUnauthorized, "Incorrect email or password", nil)
 		return
 	}
 
