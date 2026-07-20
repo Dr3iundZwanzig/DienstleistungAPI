@@ -74,6 +74,29 @@ func (c Client) GetAvailabilityByEmployeeID(employeeID string) (*Availability, e
 	return &availability, nil
 }
 
+func (c Client) IsAvailabilitySlotAvailable(employeeID, date, startTime, endTime string) (bool, error) {
+	availability, err := c.GetAvailabilityByEmployeeID(employeeID)
+	if err != nil {
+		return false, err
+	}
+	if availability == nil {
+		return false, nil
+	}
+
+	for _, day := range availability.Dates {
+		if day.Date != date {
+			continue
+		}
+		for _, slot := range day.Slots {
+			if slot.StartTime == startTime && slot.EndTime == endTime {
+				return slot.IsAvailable, nil
+			}
+		}
+	}
+
+	return false, nil
+}
+
 func (c Client) CloseAvailabilitySlot(employeeID, date, startTime, endTime string) error {
 	return c.setAvailabilitySlotAvailability(employeeID, date, startTime, endTime, false)
 }

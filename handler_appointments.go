@@ -13,8 +13,8 @@ func (cfg *apiConfig) handlerAppointmentsCreate(w http.ResponseWriter, r *http.R
 		Date         string   `json:"date"`
 		StartTime    string   `json:"start_time"`
 		EndTime      string   `json:"end_time"`
-		EmployeeName string   `json:"employee_name"`
 		EmployeeID   string   `json:"employee_id,omitempty"`
+		NoPreference bool     `json:"no_preference,omitempty"`
 		ServiceIDs   []string `json:"service_ids"`
 	}
 
@@ -50,16 +50,21 @@ func (cfg *apiConfig) handlerAppointmentsCreate(w http.ResponseWriter, r *http.R
 		totalPrice += service.Price
 	}
 
-	if params.EmployeeID != "" {
-		employee, err := cfg.db.GetEmployee(params.EmployeeID)
+	resolvedEmployeeID := params.EmployeeID
+	if params.NoPreference {
+		resolvedEmployeeID, err = cfg.db.ResolveEmployeeForServices(serviceNames)
 		if err != nil {
-			respondWithError(w, http.StatusInternalServerError, "Couldn't validate employee", err)
+			respondWithError(w, http.StatusInternalServerError, "Couldn't resolve employee", err)
 			return
 		}
-		if employee == nil {
-			respondWithError(w, http.StatusBadRequest, "Invalid employee_id provided", nil)
+		if resolvedEmployeeID == "" {
+			respondWithError(w, http.StatusBadRequest, "Couldn't resolve employee for selected services", nil)
 			return
 		}
+	}
+	if resolvedEmployeeID == "" {
+		respondWithError(w, http.StatusBadRequest, "employee_id is required unless no_preference is true", nil)
+		return
 	}
 
 	userID, ok := cfg.authenticateExistingUser(w, r)
@@ -67,12 +72,38 @@ func (cfg *apiConfig) handlerAppointmentsCreate(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	employee, err := cfg.db.GetEmployee(resolvedEmployeeID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't validate employee", err)
+		return
+	}
+	if employee == nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid employee_id provided", nil)
+		return
+	}
+
+	isAvailable, err := cfg.db.IsAvailabilitySlotAvailable(resolvedEmployeeID, params.Date, params.StartTime, params.EndTime)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't validate availability", err)
+		return
+	}
+	if !isAvailable {
+		respondWithError(w, http.StatusConflict, "Selected time slot is no longer available", nil)
+		return
+	}
+
+	employeeName, err := resolveAppointmentEmployeeName("", resolvedEmployeeID, cfg.db.GetEmployee)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't resolve employee name", err)
+		return
+	}
+
 	appointment, err := cfg.db.CreateAppointment(database.CreateAppointmentParams{
 		Date:                 params.Date,
 		StartTime:            params.StartTime,
 		EndTime:              params.EndTime,
-		EmployeeName:         params.EmployeeName,
-		EmployeeID:           params.EmployeeID,
+		EmployeeName:         employeeName,
+		EmployeeID:           resolvedEmployeeID,
 		UserID:               userID.String(),
 		Services:             serviceNames,
 		TotalDurationMinutes: totalDuration,

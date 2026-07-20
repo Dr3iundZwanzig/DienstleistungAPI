@@ -531,15 +531,24 @@ async function getAvailabilityEmployeeId() {
         } catch (error) {
             console.error('Failed to resolve employee', error);
         }
+
+        return null;
     }
 
-    const fallbackEmployee = employeesData.data.find(emp => emp.is_active);
-    return fallbackEmployee ? fallbackEmployee.id : 'emp_001';
+    return null;
 }
 
 async function loadAvailability(employeeId) {
     if (employeeId === undefined) {
         employeeId = await getAvailabilityEmployeeId();
+    }
+
+    if (!employeeId) {
+        availabilityData = {
+            employee_id: null,
+            dates: []
+        };
+        return;
     }
 
     try {
@@ -758,7 +767,7 @@ function renderEmployees() {
             <div class="flex-employee-avatar">?</div>
             <div class="flex-employee-details">
                 <div class="flex-employee-name">Keine Präferenz</div>
-                <div class="flex-employee-title">Erster verfügbarer Mitarbeiter</div>
+                <div class="flex-employee-title">Erster Passender Mitarbeiter</div>
             </div>
         </div>
     `;
@@ -1125,18 +1134,12 @@ document.getElementById("confirm-appointment").addEventListener("click", async (
     }
 
     const serviceIds = Array.from(selectedServices.keys());
-    const resolvedEmployeeId = await getAvailabilityEmployeeId();
-    // Keine Präferenz wird hier durch den "besten" mitarbeiter ersätzt je nach dienstleistung
-    const employeeName = selectedEmployee === "no_preference"
-        ? employeesData.data.find(e => e.id === resolvedEmployeeId)?.name || "Unbekannt"
-        : employeesData.data.find(e => e.id === selectedEmployee)?.name || "Unbekannt";
-
     const payload = {
         date: selectedTimeSlot.date,
         start_time: selectedTimeSlot.start_time,
         end_time: selectedTimeSlot.end_time,
-        employee_name: employeeName,
-        employee_id: selectedEmployee === "no_preference" ? resolvedEmployeeId : selectedEmployee,
+        employee_id: selectedEmployee === "no_preference" ? "" : selectedEmployee,
+        no_preference: selectedEmployee === "no_preference",
         service_ids: serviceIds
     };
     // --- An api senden mit dem derzeitig eingeloggten user ---

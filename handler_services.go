@@ -84,7 +84,7 @@ func defaultSeedServicesTree() []database.ServiceNode {
 					Currency:        "EUR",
 					IsActive:        true,
 				},
-				{
+				{ // hinzugefügt da Sarah Weber Gesichtsbehandlung in specialties hat ohne als dienstleistung vorhanden zu sein
 					ID:              "srv_005",
 					Name:            "Gesichtsbehandlung",
 					Description:     "Reinigung, Pflege und Abschlusspflege",
