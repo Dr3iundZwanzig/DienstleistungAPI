@@ -3,20 +3,29 @@ package database
 import (
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
+)
+
+const (
+	UserRoleCustomer = "customer"
+	UserRoleStaff    = "staff"
+	UserRoleAdmin    = "admin"
 )
 
 type User struct {
 	ID        uuid.UUID `json:"id"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+	Role      string    `json:"role"`
 	CreateUserParams
 }
 
 type CreateUserParams struct {
 	Email    string `json:"email"`
+	Role     string `json:"role,omitempty"`
 	Password string `json:"-"`
 }
 
@@ -24,7 +33,8 @@ func (c Client) GetUsers() ([]User, error) {
 	query := `
 		SELECT
 			id,
-			email
+			email,
+			role
 		FROM users
 	`
 
@@ -38,9 +48,10 @@ func (c Client) GetUsers() ([]User, error) {
 	for rows.Next() {
 		var user User
 		var id string
-		if err := rows.Scan(&id, &user.Email); err != nil {
+		if err := rows.Scan(&id, &user.Email, &user.Role); err != nil {
 			return nil, err
 		}
+		user.Role = normalizeUserRole(user.Role)
 		user.ID, err = uuid.Parse(id)
 		if err != nil {
 			return nil, err
@@ -53,13 +64,13 @@ func (c Client) GetUsers() ([]User, error) {
 
 func (c Client) GetUserByEmail(email string) (User, error) {
 	query := `
-		SELECT id, created_at, updated_at, email, password
+		SELECT id, created_at, updated_at, email, password, role
 		FROM users
 		WHERE email = ?
 	`
 	var user User
 	var id string
-	err := c.db.QueryRow(query, email).Scan(&id, &user.CreatedAt, &user.UpdatedAt, &user.Email, &user.Password)
+	err := c.db.QueryRow(query, email).Scan(&id, &user.CreatedAt, &user.UpdatedAt, &user.Email, &user.Password, &user.Role)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return User{}, nil
@@ -70,12 +81,13 @@ func (c Client) GetUserByEmail(email string) (User, error) {
 	if err != nil {
 		return User{}, err
 	}
+	user.Role = normalizeUserRole(user.Role)
 	return user, nil
 }
 
 func (c Client) GetUserByRefreshToken(token string) (*User, error) {
 	query := `
-		SELECT u.id, u.email, u.created_at, u.updated_at, u.password
+		SELECT u.id, u.email, u.created_at, u.updated_at, u.password, u.role
 		FROM users u
 		JOIN refresh_tokens rt ON u.id = rt.user_id
 		WHERE rt.token = ?
@@ -85,7 +97,7 @@ func (c Client) GetUserByRefreshToken(token string) (*User, error) {
 
 	var user User
 	var id string
-	err := c.db.QueryRow(query, token).Scan(&id, &user.Email, &user.CreatedAt, &user.UpdatedAt, &user.Password)
+	err := c.db.QueryRow(query, token).Scan(&id, &user.Email, &user.CreatedAt, &user.UpdatedAt, &user.Password, &user.Role)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -96,20 +108,22 @@ func (c Client) GetUserByRefreshToken(token string) (*User, error) {
 	if err != nil {
 		return nil, err
 	}
+	user.Role = normalizeUserRole(user.Role)
 
 	return &user, nil
 }
 
 func (c Client) CreateUser(params CreateUserParams) (*User, error) {
 	id := uuid.New()
+	role := normalizeUserRole(params.Role)
 
 	query := `
 		INSERT INTO users
-		    (id, created_at, updated_at, email, password)
+		    (id, created_at, updated_at, email, password, role)
 		VALUES
-		    (?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?)
+		    (?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?, ?)
 	`
-	_, err := c.db.Exec(query, id.String(), params.Email, params.Password)
+	_, err := c.db.Exec(query, id.String(), params.Email, params.Password, role)
 	if err != nil {
 		return nil, err
 	}
@@ -119,13 +133,13 @@ func (c Client) CreateUser(params CreateUserParams) (*User, error) {
 
 func (c Client) GetUser(id uuid.UUID) (*User, error) {
 	query := `
-		SELECT id, created_at, updated_at, email, password
+		SELECT id, created_at, updated_at, email, password, role
 		FROM users
 		WHERE id = ?
 	`
 	var user User
 	var idStr string
-	err := c.db.QueryRow(query, id.String()).Scan(&idStr, &user.CreatedAt, &user.UpdatedAt, &user.Email, &user.Password)
+	err := c.db.QueryRow(query, id.String()).Scan(&idStr, &user.CreatedAt, &user.UpdatedAt, &user.Email, &user.Password, &user.Role)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -136,6 +150,7 @@ func (c Client) GetUser(id uuid.UUID) (*User, error) {
 	if err != nil {
 		return nil, err
 	}
+	user.Role = normalizeUserRole(user.Role)
 	return &user, nil
 }
 
@@ -146,4 +161,15 @@ func (c Client) DeleteUser(id uuid.UUID) error {
 	`
 	_, err := c.db.Exec(query, id.String())
 	return err
+}
+
+func normalizeUserRole(role string) string {
+	switch strings.ToLower(strings.TrimSpace(role)) {
+	case UserRoleAdmin:
+		return UserRoleAdmin
+	case UserRoleStaff:
+		return UserRoleStaff
+	default:
+		return UserRoleCustomer
+	}
 }

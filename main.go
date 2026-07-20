@@ -87,6 +87,10 @@ func main() {
 		refreshedAccessTokenTTL: refreshedAccessTokenTTL,
 	}
 
+	if err := cfg.db.SeedServicesIfEmpty(defaultSeedServicesTree()); err != nil {
+		log.Fatalf("Couldn't seed default services: %v", err)
+	}
+
 	mux := http.NewServeMux()
 	appHandler := http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot)))
 	mux.Handle("/app/", appHandler)
@@ -103,6 +107,7 @@ func main() {
 	mux.HandleFunc("POST /api/availability", cfg.handlerAvailabilityCreate)
 	mux.HandleFunc("GET /api/employees", cfg.handlerEmployeesList)
 	mux.HandleFunc("POST /api/employees/resolve", cfg.handlerEmployeesResolve)
+	mux.HandleFunc("GET /api/services/tree", cfg.handlerServicesTree)
 	mux.HandleFunc("POST /api/test/reset-and-seed", cfg.handlerTestResetAndSeed)
 	mux.HandleFunc("DELETE /api/appointments/delete", cfg.handlerAppointmentsCancelAll)
 

@@ -5,20 +5,17 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/Dr3iundZwanzig/DienstleistungAPI/auth"
 	"github.com/Dr3iundZwanzig/DienstleistungAPI/database"
 )
 
 func (cfg *apiConfig) handlerAppointmentsCreate(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
-		Date                 string   `json:"date"`
-		StartTime            string   `json:"start_time"`
-		EndTime              string   `json:"end_time"`
-		EmployeeName         string   `json:"employee_name"`
-		EmployeeID           string   `json:"employee_id,omitempty"`
-		Services             []string `json:"services"`
-		TotalDurationMinutes int      `json:"total_duration_minutes"`
-		TotalPrice           float64  `json:"total_price"`
+		Date         string   `json:"date"`
+		StartTime    string   `json:"start_time"`
+		EndTime      string   `json:"end_time"`
+		EmployeeName string   `json:"employee_name"`
+		EmployeeID   string   `json:"employee_id,omitempty"`
+		ServiceIDs   []string `json:"service_ids"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -33,16 +30,40 @@ func (cfg *apiConfig) handlerAppointmentsCreate(w http.ResponseWriter, r *http.R
 		respondWithError(w, http.StatusBadRequest, "date, start_time and end_time are required", nil)
 		return
 	}
-
-	bearerToken, err := auth.GetBearerToken(r.Header)
-	if err != nil {
-		respondWithError(w, http.StatusUnauthorized, "Authorization token required", err)
+	if len(params.ServiceIDs) == 0 {
+		respondWithError(w, http.StatusBadRequest, "service_ids is required", nil)
 		return
 	}
 
-	userID, err := auth.ValidateJWT(bearerToken, cfg.jwtSecret)
+	selectedServices, err := cfg.db.GetActiveLeafServicesByIDs(params.ServiceIDs)
 	if err != nil {
-		respondWithError(w, http.StatusUnauthorized, "Invalid or expired token", err)
+		respondWithError(w, http.StatusBadRequest, "Invalid service_ids provided", err)
+		return
+	}
+
+	serviceNames := make([]string, 0, len(selectedServices))
+	totalDuration := 0
+	totalPrice := 0.0
+	for _, service := range selectedServices {
+		serviceNames = append(serviceNames, service.Name)
+		totalDuration += service.DurationMinutes
+		totalPrice += service.Price
+	}
+
+	if params.EmployeeID != "" {
+		employee, err := cfg.db.GetEmployee(params.EmployeeID)
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Couldn't validate employee", err)
+			return
+		}
+		if employee == nil {
+			respondWithError(w, http.StatusBadRequest, "Invalid employee_id provided", nil)
+			return
+		}
+	}
+
+	userID, ok := cfg.authenticateExistingUser(w, r)
+	if !ok {
 		return
 	}
 
@@ -53,9 +74,9 @@ func (cfg *apiConfig) handlerAppointmentsCreate(w http.ResponseWriter, r *http.R
 		EmployeeName:         params.EmployeeName,
 		EmployeeID:           params.EmployeeID,
 		UserID:               userID.String(),
-		Services:             params.Services,
-		TotalDurationMinutes: params.TotalDurationMinutes,
-		TotalPrice:           params.TotalPrice,
+		Services:             serviceNames,
+		TotalDurationMinutes: totalDuration,
+		TotalPrice:           totalPrice,
 	})
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't save appointment", err)
@@ -66,15 +87,8 @@ func (cfg *apiConfig) handlerAppointmentsCreate(w http.ResponseWriter, r *http.R
 }
 
 func (cfg *apiConfig) handlerAppointmentsList(w http.ResponseWriter, r *http.Request) {
-	bearerToken, err := auth.GetBearerToken(r.Header)
-	if err != nil {
-		respondWithError(w, http.StatusUnauthorized, "Authorization token required", err)
-		return
-	}
-
-	userID, err := auth.ValidateJWT(bearerToken, cfg.jwtSecret)
-	if err != nil {
-		respondWithError(w, http.StatusUnauthorized, "Invalid or expired token", err)
+	userID, ok := cfg.authenticateExistingUser(w, r)
+	if !ok {
 		return
 	}
 
@@ -88,15 +102,8 @@ func (cfg *apiConfig) handlerAppointmentsList(w http.ResponseWriter, r *http.Req
 }
 
 func (cfg *apiConfig) handlerAppointmentsCancel(w http.ResponseWriter, r *http.Request) {
-	bearerToken, err := auth.GetBearerToken(r.Header)
-	if err != nil {
-		respondWithError(w, http.StatusUnauthorized, "Authorization token required", err)
-		return
-	}
-
-	userID, err := auth.ValidateJWT(bearerToken, cfg.jwtSecret)
-	if err != nil {
-		respondWithError(w, http.StatusUnauthorized, "Invalid or expired token", err)
+	userID, ok := cfg.authenticateExistingUser(w, r)
+	if !ok {
 		return
 	}
 
@@ -122,19 +129,12 @@ func (cfg *apiConfig) handlerAppointmentsCancel(w http.ResponseWriter, r *http.R
 	})
 }
 func (cfg *apiConfig) handlerAppointmentsCancelAll(w http.ResponseWriter, r *http.Request) {
-	bearerToken, err := auth.GetBearerToken(r.Header)
-	if err != nil {
-		respondWithError(w, http.StatusUnauthorized, "Authorization token required", err)
+	userID, ok := cfg.authenticateExistingUser(w, r)
+	if !ok {
 		return
 	}
 
-	userID, err := auth.ValidateJWT(bearerToken, cfg.jwtSecret)
-	if err != nil {
-		respondWithError(w, http.StatusUnauthorized, "Invalid or expired token", err)
-		return
-	}
-
-	err = cfg.db.CancelAllAppointmentsFromUser(userID.String())
+	err := cfg.db.CancelAllAppointmentsFromUser(userID.String())
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't cancel appointment", err)
 		return

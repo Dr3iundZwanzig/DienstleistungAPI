@@ -59,6 +59,12 @@ func (cfg *apiConfig) handlerTestResetAndSeed(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	serviceSeedData := defaultSeedServicesTree()
+	if err := cfg.seedServices(serviceSeedData); err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't seed default services", err)
+		return
+	}
+
 	seedData := defaultSeedEmployees()
 	if err := cfg.seedEmployees(seedData); err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't seed default test data", err)
@@ -68,6 +74,7 @@ func (cfg *apiConfig) handlerTestResetAndSeed(w http.ResponseWriter, r *http.Req
 	respondWithJSON(w, http.StatusCreated, map[string]any{
 		"message":          "Database reset and test data seeded",
 		"seeded_employees": len(seedData),
+		"seeded_services":  countServiceNodes(serviceSeedData),
 	})
 }
 

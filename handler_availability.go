@@ -36,6 +36,10 @@ func (cfg *apiConfig) handlerAvailabilityGet(w http.ResponseWriter, r *http.Requ
 }
 
 func (cfg *apiConfig) handlerAvailabilityCreate(w http.ResponseWriter, r *http.Request) {
+	if _, ok := cfg.requireStaffOrAdmin(w, r); !ok {
+		return
+	}
+
 	type parameters struct {
 		EmployeeID string                      `json:"employee_id"`
 		Dates      []database.AvailabilityDate `json:"dates"`

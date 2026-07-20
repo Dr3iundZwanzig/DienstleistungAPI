@@ -34,6 +34,7 @@ func (c *Client) autoMigrate() error {
 		id TEXT PRIMARY KEY,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		role TEXT NOT NULL DEFAULT 'customer',
 		password TEXT NOT NULL,
 		email TEXT UNIQUE NOT NULL
 	);
@@ -65,7 +66,6 @@ func (c *Client) autoMigrate() error {
 		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		name TEXT NOT NULL,
 		title TEXT NOT NULL,
-		specialties TEXT NOT NULL, -- wird als JSON array, e.g. ["Haarschnitt","Farbbehandlung"] gespeichert kann später auch besser normalisiert werden
 		is_active BOOLEAN NOT NULL DEFAULT 1
 	);
 	`
@@ -110,12 +110,51 @@ func (c *Client) autoMigrate() error {
 	if err != nil {
 		return err
 	}
+
+	servicesTable := `
+	CREATE TABLE IF NOT EXISTS services (
+		id TEXT PRIMARY KEY,
+		parent_id TEXT,
+		name TEXT NOT NULL,
+		description TEXT,
+		duration_minutes INTEGER,
+		price REAL,
+		currency TEXT,
+		is_active BOOLEAN NOT NULL DEFAULT 1,
+		sort_order INTEGER NOT NULL DEFAULT 0,
+		FOREIGN KEY(parent_id) REFERENCES services(id) ON DELETE CASCADE
+	);
+	`
+	_, err = c.db.Exec(servicesTable)
+	if err != nil {
+		return err
+	}
+
+	employeeServicesTable := `
+	CREATE TABLE IF NOT EXISTS employee_services (
+		employee_id TEXT NOT NULL,
+		service_id TEXT NOT NULL,
+		PRIMARY KEY (employee_id, service_id),
+		FOREIGN KEY(employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+		FOREIGN KEY(service_id) REFERENCES services(id) ON DELETE CASCADE
+	);
+	`
+	_, err = c.db.Exec(employeeServicesTable)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
 func (c Client) Reset() error {
 	if _, err := c.db.Exec("DELETE FROM appointments"); err != nil {
 		return fmt.Errorf("failed to reset table appointments: %w", err)
+	}
+	if _, err := c.db.Exec("DELETE FROM employee_services"); err != nil {
+		return fmt.Errorf("failed to reset table employee_services: %w", err)
+	}
+	if _, err := c.db.Exec("DELETE FROM services"); err != nil {
+		return fmt.Errorf("failed to reset table services: %w", err)
 	}
 	if _, err := c.db.Exec("DELETE FROM availability"); err != nil {
 		return fmt.Errorf("failed to reset table availability: %w", err)

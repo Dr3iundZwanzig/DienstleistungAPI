@@ -2,9 +2,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     const token = getAccessToken();
     const refreshToken = getRefreshToken();
 
+    await loadServicesTree();
+
     await loadEmployees();
 
     await loadAvailability(await getAvailabilityEmployeeId());
+    //rendern nachdem der service tree from backend geladen wurde
+    render(servicesTree.data);
 
     if (!token && refreshToken) {
         const refreshed = await refreshAccessToken();
@@ -461,70 +465,26 @@ async function loadUserAppointments() {
     }
 }
 
-const servicesTree = {
-    "data": [
-        {
-            "id": "cat_01",
-            "name": "Friseur",
-            "children": [
-                {
-                    "id": "sub_01",
-                    "name": "Herren",
-                    "children": [
-                        {
-                            "id": "srv_001",
-                            "name": "Haarschnitt",
-                            "description": "Waschen, Schneiden, Föhnen",
-                            "duration_minutes": 45,
-                            "price": 39.90,
-                            "currency": "EUR",
-                            "is_active": true
-                        },
-                        {
-                            "id": "srv_002",
-                            "name": "Bartpflege",
-                            "description": "Trimmen und Konturen nachrasieren",
-                            "duration_minutes": 30,
-                            "price": 19.90,
-                            "currency": "EUR",
-                            "is_active": true
-                        }
-                    ]
-                },
-                {
-                    "id": "sub_02",
-                    "name": "Damen",
-                    "children": [
-                        {
-                            "id": "srv_003",
-                            "name": "Farbbehandlung",
-                            "description": "Färben oder Tönen inkl. Beratung",
-                            "duration_minutes": 90,
-                            "price": 79.00,
-                            "currency": "EUR",
-                            "is_active": true
-                        }
-                    ]
-                }
-            ]
-        },
-        {
-            "id": "cat_02",
-            "name": "Kosmetik",
-            "children": [
-                {
-                    "id": "srv_004",
-                    "name": "Maniküre",
-                    "description": "Nagelpflege inkl. Lackieren",
-                    "duration_minutes": 40,
-                    "price": 29.90,
-                    "currency": "EUR",
-                    "is_active": true
-                }
-            ]
+let servicesTree = { data: [] };
+
+async function loadServicesTree() {
+    try {
+        const res = await apiFetch('/api/services/tree');
+        if (!res.ok) {
+            throw new Error('Could not load services');
         }
-    ]
-};
+
+        const data = await res.json();
+        if (data && Array.isArray(data.data)) {
+            servicesTree = { data: data.data };
+            return;
+        }
+    } catch (error) {
+        console.error('Failed to load services tree', error);
+    }
+
+    servicesTree = { data: [] };
+}
 
 // --- Mitarbeiter daten in db speichern mit der api ---
 let employeesData = { data: [] };
@@ -621,6 +581,15 @@ let currentDate = null; // Aktuell angezeigtes Datum
 function render(nodes) {
     const listEl = document.getElementById("service-list");
     listEl.innerHTML = "";
+
+    if (!Array.isArray(nodes) || nodes.length === 0) {
+        const emptyState = document.createElement("div");
+        emptyState.className = "appointment-empty";
+        emptyState.textContent = "Keine Dienstleistungen verfügbar.";
+        listEl.appendChild(emptyState);
+        renderBreadcrumbs();
+        return;
+    }
 
     nodes.forEach(node => {
         if (node.is_active === false) return;
@@ -1155,20 +1124,12 @@ document.getElementById("confirm-appointment").addEventListener("click", async (
         return;
     }
 
-    const services = Array.from(selectedServices.values()).map(s => s.name);
+    const serviceIds = Array.from(selectedServices.keys());
     const resolvedEmployeeId = await getAvailabilityEmployeeId();
     // Keine Präferenz wird hier durch den "besten" mitarbeiter ersätzt je nach dienstleistung
     const employeeName = selectedEmployee === "no_preference"
         ? employeesData.data.find(e => e.id === resolvedEmployeeId)?.name || "Unbekannt"
         : employeesData.data.find(e => e.id === selectedEmployee)?.name || "Unbekannt";
-
-    // Calculate total duration and price
-    let totalDuration = 0;
-    let totalPrice = 0;
-    selectedServices.forEach(service => {
-        totalDuration += service.duration_minutes;
-        totalPrice += service.price;
-    });
 
     const payload = {
         date: selectedTimeSlot.date,
@@ -1176,9 +1137,7 @@ document.getElementById("confirm-appointment").addEventListener("click", async (
         end_time: selectedTimeSlot.end_time,
         employee_name: employeeName,
         employee_id: selectedEmployee === "no_preference" ? resolvedEmployeeId : selectedEmployee,
-        services: services,
-        total_duration_minutes: totalDuration,
-        total_price: totalPrice
+        service_ids: serviceIds
     };
     // --- An api senden mit dem derzeitig eingeloggten user ---
     try {
@@ -1209,5 +1168,4 @@ document.getElementById("confirm-appointment").addEventListener("click", async (
     }
 });
 
-// --- Initial render ---
-render(servicesTree.data);
+// --- Initial render happens after data loading in DOMContentLoaded ---
