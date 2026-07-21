@@ -102,6 +102,7 @@ func main() {
 	mux.HandleFunc("POST /api/users", cfg.handlerUsersCreate)
 	mux.HandleFunc("GET /api/appointments", cfg.handlerAppointmentsList)
 	mux.HandleFunc("POST /api/appointments", cfg.handlerAppointmentsCreate)
+	mux.HandleFunc("PUT /api/appointments/{id}", cfg.handlerAppointmentsUpdate)
 	mux.HandleFunc("DELETE /api/appointments/{id}", cfg.handlerAppointmentsCancel)
 	mux.HandleFunc("GET /api/availability", cfg.handlerAvailabilityGet)
 	mux.HandleFunc("POST /api/availability", cfg.handlerAvailabilityCreate)

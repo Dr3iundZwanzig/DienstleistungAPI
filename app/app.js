@@ -366,9 +366,15 @@ function renderUserAppointments(appointments) {
                 <div><strong>Gesamtdauer:</strong> ${durationText}</div>
             </div>
             <div class="appointment-card-actions">
+                <button type="button" class="appointment-edit" data-appointment-id="${appointment.id}">Termin bearbeiten</button>
                 <button type="button" class="appointment-cancel" data-appointment-id="${appointment.id}">Termin stornieren</button>
             </div>
         `;
+        
+        const editBtn = card.querySelector('.appointment-edit');
+        editBtn.addEventListener('click', async () => {
+            await toggleAppointmentEditor(card, appointment);
+        });
 
         const cancelBtn = card.querySelector('.appointment-cancel');
         cancelBtn.addEventListener('click', async () => {
@@ -377,6 +383,288 @@ function renderUserAppointments(appointments) {
 
         listEl.appendChild(card);
     });
+}
+
+function getActiveEmployees() {
+    return Array.isArray(employeesData.data)
+        ? employeesData.data.filter((emp) => emp && emp.is_active)
+        : [];
+}
+
+function getEmployeeNameByID(employeeID) {
+    const employee = getActiveEmployees().find((emp) => emp.id === employeeID);
+    return employee ? employee.name : employeeID;
+}
+//api request für die verfügbaren termine eines mitarbeiters
+async function fetchAvailabilityForEmployee(employeeID) {
+    if (!employeeID) {
+        return { dates: [] };
+    }
+
+    const res = await apiFetch(`/api/availability?employee_id=${encodeURIComponent(employeeID)}`);
+    if (!res.ok) {
+        throw new Error('Verfuegbarkeit konnte nicht geladen werden.');
+    }
+
+    const data = await res.json();
+    if (!data || !Array.isArray(data.dates)) {
+        return { dates: [] };
+    }
+
+    return data;
+}
+
+function buildSlotOptionsForDate(availability, date) {
+    const day = (availability.dates || []).find((entry) => entry.date === date);
+    if (!day || !Array.isArray(day.slots)) {
+        return [];
+    }
+
+    return day.slots.filter((slot) => slot && slot.is_available).map((slot) => ({
+        start_time: slot.start_time,
+        end_time: slot.end_time,
+    }));
+}
+
+function renderEditSlotSelect(slotSelect, slots, preferredSlot) {
+    slotSelect.innerHTML = '';
+
+    if (!slots.length) {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = 'Keine freien Zeitslots';
+        slotSelect.appendChild(option);
+        slotSelect.disabled = true;
+        return;
+    }
+
+    slotSelect.disabled = false;
+
+    slots.forEach((slot) => {
+        const option = document.createElement('option');
+        option.value = `${slot.start_time}|${slot.end_time}`;
+        option.textContent = `${slot.start_time} - ${slot.end_time}`;
+        slotSelect.appendChild(option);
+    });
+
+    if (preferredSlot && slots.some((slot) => `${slot.start_time}|${slot.end_time}` === preferredSlot)) {
+        slotSelect.value = preferredSlot;
+        return;
+    }
+
+    slotSelect.value = `${slots[0].start_time}|${slots[0].end_time}`;
+}
+//termin bearbeitung darstellen
+async function toggleAppointmentEditor(card, appointment) {
+    const existingEditor = card.querySelector('.appointment-edit-form');
+    if (existingEditor) {
+        existingEditor.remove();
+        return;
+    }
+
+    card.querySelectorAll('.appointment-edit-form').forEach((node) => node.remove());
+
+    const editor = document.createElement('div');
+    editor.className = 'appointment-edit-form';
+    editor.innerHTML = `
+        <div class="appointment-edit-title">Termin bearbeiten</div>
+            <div class="appointment-edit-fields">
+                <label class="appointment-edit-field">
+                    Mitarbeiter
+                    <select class="appointment-edit-employee"></select>
+                </label>
+                <label class="appointment-edit-field">
+                    Datum
+                    <select class="appointment-edit-date"></select>
+                </label>
+                <label class="appointment-edit-field">
+                    Uhrzeit
+                    <select class="appointment-edit-slot"></select>
+                </label>
+            </div>
+            <div class="appointment-edit-actions">
+                <button type="button" class="appointment-edit-save">Aenderungen speichern</button>
+                <button type="button" class="appointment-edit-cancel">Abbrechen</button>
+            </div>
+    `;
+
+    card.appendChild(editor);
+
+    const employeeSelect = editor.querySelector('.appointment-edit-employee');
+    const dateSelect = editor.querySelector('.appointment-edit-date');
+    const slotSelect = editor.querySelector('.appointment-edit-slot');
+    const saveBtn = editor.querySelector('.appointment-edit-save');
+    const cancelBtn = editor.querySelector('.appointment-edit-cancel');
+
+    const employees = getActiveEmployees();
+    employeeSelect.innerHTML = '';
+    employees.forEach((emp) => {
+        const option = document.createElement('option');
+        option.value = emp.id;
+        option.textContent = emp.name;
+        employeeSelect.appendChild(option);
+    });
+
+    if (!employees.length) {
+        dateSelect.innerHTML = '<option value="">Keine Mitarbeiter verfuegbar</option>';
+        slotSelect.innerHTML = '<option value="">Keine Mitarbeiter verfuegbar</option>';
+        employeeSelect.disabled = true;
+        dateSelect.disabled = true;
+        slotSelect.disabled = true;
+        saveBtn.disabled = true;
+        cancelBtn.addEventListener('click', () => editor.remove());
+        return;
+    }
+
+    const defaultEmployeeID = employees.some((emp) => emp.id === appointment.employee_id)
+        ? appointment.employee_id
+        : employees[0].id;
+    employeeSelect.value = defaultEmployeeID;
+
+    let availability = { dates: [] };
+    //datum und zur verfügung stehende termine überprüfen um keine bereits belegten termine anzuzeigen
+    const syncDateAndSlotOptions = () => {
+        const selectedEmployeeID = employeeSelect.value;
+        const previousDateValue = dateSelect.value;
+
+        const availableDates = (availability.dates || [])
+            .filter((day) => day && Array.isArray(day.slots) && day.slots.some((slot) => slot.is_available))
+            .map((day) => day.date);
+
+        if (selectedEmployeeID === appointment.employee_id && !availableDates.includes(appointment.date)) {
+            availableDates.push(appointment.date);
+        }
+
+        dateSelect.innerHTML = '';
+
+        if (!availableDates.length) {
+            dateSelect.innerHTML = '<option value="">Keine verfuegbaren Tage</option>';
+            dateSelect.disabled = true;
+            renderEditSlotSelect(slotSelect, [], null);
+            return;
+        }
+
+        availableDates.sort();
+        availableDates.forEach((date) => {
+            const option = document.createElement('option');
+            option.value = date;
+            option.textContent = formatAppointmentDate(date);
+            dateSelect.appendChild(option);
+        });
+
+        dateSelect.disabled = false;
+
+        if (previousDateValue && availableDates.includes(previousDateValue)) {
+            dateSelect.value = previousDateValue;
+        } else if (selectedEmployeeID === appointment.employee_id && availableDates.includes(appointment.date)) {
+            dateSelect.value = appointment.date;
+        } else {
+            dateSelect.value = availableDates[0];
+        }
+
+        let slots = buildSlotOptionsForDate(availability, dateSelect.value);
+        if (
+            selectedEmployeeID === appointment.employee_id &&
+            dateSelect.value === appointment.date &&
+            !slots.some((slot) => slot.start_time === appointment.start_time && slot.end_time === appointment.end_time)
+        ) {
+            slots = [...slots, { start_time: appointment.start_time, end_time: appointment.end_time }];
+        }
+
+        const preferredSlot =
+            selectedEmployeeID === appointment.employee_id && dateSelect.value === appointment.date
+                ? `${appointment.start_time}|${appointment.end_time}`
+                : null;
+
+        renderEditSlotSelect(slotSelect, slots, preferredSlot);
+    };
+    //verfügbarkeit von mitarbeitern laden und mit den termin slots synchronisieren
+    const loadAvailabilityAndSync = async () => {
+        saveBtn.disabled = true;
+        try {
+            availability = await fetchAvailabilityForEmployee(employeeSelect.value);
+            syncDateAndSlotOptions();
+        } catch (error) {
+            dateSelect.innerHTML = '<option value="">Fehler beim Laden</option>';
+            slotSelect.innerHTML = '<option value="">Fehler beim Laden</option>';
+            dateSelect.disabled = true;
+            slotSelect.disabled = true;
+            setAppointmentsFeedback(`Fehler beim Laden der Verfuegbarkeit: ${error.message}`, true);
+        } finally {
+            saveBtn.disabled = false;
+        }
+    };
+
+    employeeSelect.addEventListener('change', async () => {
+        await loadAvailabilityAndSync();
+    });
+
+    dateSelect.addEventListener('change', () => {
+        let slots = buildSlotOptionsForDate(availability, dateSelect.value);
+        if (
+            employeeSelect.value === appointment.employee_id &&
+            dateSelect.value === appointment.date &&
+            !slots.some((slot) => slot.start_time === appointment.start_time && slot.end_time === appointment.end_time)
+        ) {
+            slots = [...slots, { start_time: appointment.start_time, end_time: appointment.end_time }];
+        }
+
+        const preferredSlot =
+            employeeSelect.value === appointment.employee_id && dateSelect.value === appointment.date
+                ? `${appointment.start_time}|${appointment.end_time}`
+                : null;
+
+        renderEditSlotSelect(slotSelect, slots, preferredSlot);
+    });
+
+    cancelBtn.addEventListener('click', () => {
+        editor.remove();
+    });
+
+    saveBtn.addEventListener('click', async () => {
+        if (!employeeSelect.value || !dateSelect.value || !slotSelect.value) {
+            setAppointmentsFeedback('Bitte Mitarbeiter, Datum und Uhrzeit waehlen.', true);
+            return;
+        }
+
+        const slotParts = slotSelect.value.split('|');
+        if (slotParts.length !== 2) {
+            setAppointmentsFeedback('Ungueltiger Zeitslot.', true);
+            return;
+        }
+
+        const payload = {
+            date: dateSelect.value,
+            start_time: slotParts[0],
+            end_time: slotParts[1],
+            employee_id: employeeSelect.value,
+        };
+        //api request um einen termin zu ändern
+        try {
+            const res = await apiFetch(`/api/appointments/${encodeURIComponent(appointment.id)}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload),
+            }, {
+                attachAuth: true,
+            });
+
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.error || 'Termin konnte nicht aktualisiert werden.');
+            }
+
+            await loadUserAppointments();
+            await loadAvailability(await getAvailabilityEmployeeId());
+            setAppointmentsFeedback(`Termin aktualisiert: ${getEmployeeNameByID(payload.employee_id)} ${payload.start_time}-${payload.end_time}`);
+        } catch (error) {
+            setAppointmentsFeedback(`Fehler beim Aktualisieren: ${error.message}`, true);
+        }
+    });
+
+    await loadAvailabilityAndSync();
 }
 // einen termin löschen 
 async function cancelAppointment(appointmentId) {

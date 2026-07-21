@@ -159,6 +159,77 @@ func (cfg *apiConfig) handlerAppointmentsCancel(w http.ResponseWriter, r *http.R
 		"id":      appointment.ID,
 	})
 }
+
+func (cfg *apiConfig) handlerAppointmentsUpdate(w http.ResponseWriter, r *http.Request) {
+	type parameters struct {
+		Date       string `json:"date"`
+		StartTime  string `json:"start_time"`
+		EndTime    string `json:"end_time"`
+		EmployeeID string `json:"employee_id"`
+	}
+
+	userID, ok := cfg.authenticateExistingUser(w, r)
+	if !ok {
+		return
+	}
+
+	appointmentID := r.PathValue("id")
+	if appointmentID == "" {
+		respondWithError(w, http.StatusBadRequest, "appointment id is required", nil)
+		return
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+	if err := decoder.Decode(&params); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Couldn't decode appointment data", err)
+		return
+	}
+
+	if params.Date == "" || params.StartTime == "" || params.EndTime == "" || params.EmployeeID == "" {
+		respondWithError(w, http.StatusBadRequest, "date, start_time, end_time and employee_id are required", nil)
+		return
+	}
+
+	employee, err := cfg.db.GetEmployee(params.EmployeeID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't validate employee", err)
+		return
+	}
+	if employee == nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid employee_id provided", nil)
+		return
+	}
+
+	employeeName, err := resolveAppointmentEmployeeName("", params.EmployeeID, cfg.db.GetEmployee)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't resolve employee name", err)
+		return
+	}
+
+	appointment, err := cfg.db.UpdateAppointmentByIDAndUserID(appointmentID, userID.String(), database.UpdateAppointmentParams{
+		Date:         params.Date,
+		StartTime:    params.StartTime,
+		EndTime:      params.EndTime,
+		EmployeeName: employeeName,
+		EmployeeID:   params.EmployeeID,
+	})
+	if err != nil {
+		if err == database.ErrAppointmentSlotUnavailable {
+			respondWithError(w, http.StatusConflict, "Selected time slot is no longer available", nil)
+			return
+		}
+		respondWithError(w, http.StatusInternalServerError, "Couldn't update appointment", err)
+		return
+	}
+	if appointment == nil {
+		respondWithError(w, http.StatusNotFound, "Appointment not found", nil)
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, appointment)
+}
+
 func (cfg *apiConfig) handlerAppointmentsCancelAll(w http.ResponseWriter, r *http.Request) {
 	userID, ok := cfg.authenticateExistingUser(w, r)
 	if !ok {

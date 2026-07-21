@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+var ErrAppointmentSlotUnavailable = errors.New("appointment slot unavailable")
+
 type Appointment struct {
 	ID                   string    `json:"id"`
 	CreatedAt            time.Time `json:"created_at"`
@@ -33,6 +35,14 @@ type CreateAppointmentParams struct {
 	Services             []string
 	TotalDurationMinutes int
 	TotalPrice           float64
+}
+
+type UpdateAppointmentParams struct {
+	Date         string
+	StartTime    string
+	EndTime      string
+	EmployeeName string
+	EmployeeID   string
 }
 
 func (c Client) CreateAppointment(params CreateAppointmentParams) (*Appointment, error) {
@@ -174,6 +184,68 @@ func (c Client) CancelAllAppointmentsFromUser(userID string) error {
 	return nil
 }
 
+func (c Client) UpdateAppointmentByIDAndUserID(appointmentID, userID string, params UpdateAppointmentParams) (*Appointment, error) {
+	tx, err := c.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	current, err := getAppointmentByIDAndUserID(tx, appointmentID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if current == nil {
+		return nil, nil
+	}
+
+	slotChanged := current.EmployeeID != params.EmployeeID ||
+		current.Date != params.Date ||
+		current.StartTime != params.StartTime ||
+		current.EndTime != params.EndTime
+
+	if slotChanged {
+		if current.EmployeeID != "" {
+			if err := updateAvailabilitySlot(tx, current.EmployeeID, current.Date, current.StartTime, current.EndTime, true); err != nil {
+				return nil, err
+			}
+		}
+
+		available, err := isAvailabilitySlotAvailableForQuerier(tx, params.EmployeeID, params.Date, params.StartTime, params.EndTime)
+		if err != nil {
+			return nil, err
+		}
+		if !available {
+			return nil, ErrAppointmentSlotUnavailable
+		}
+
+		if err := updateAvailabilitySlot(tx, params.EmployeeID, params.Date, params.StartTime, params.EndTime, false); err != nil {
+			return nil, err
+		}
+	}
+
+	query := `
+		UPDATE appointments
+		SET updated_at = CURRENT_TIMESTAMP,
+			date = ?,
+			start_time = ?,
+			end_time = ?,
+			employee_name = ?,
+			employee_id = ?
+		WHERE id = ? AND user_id = ?
+	`
+
+	if _, err := tx.Exec(query, params.Date, params.StartTime, params.EndTime, params.EmployeeName, params.EmployeeID, appointmentID, userID); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return c.GetAppointment(appointmentID)
+}
+
 func getAppointmentByIDAndUserID(queryRow interface {
 	QueryRow(string, ...interface{}) *sql.Row
 }, appointmentID, userID string) (*Appointment, error) {
@@ -197,6 +269,43 @@ func getAppointmentByIDAndUserID(queryRow interface {
 	}
 
 	return &appointment, nil
+}
+
+func isAvailabilitySlotAvailableForQuerier(queryRow interface {
+	QueryRow(string, ...interface{}) *sql.Row
+}, employeeID, date, startTime, endTime string) (bool, error) {
+	query := `
+		SELECT data
+		FROM availability
+		WHERE employee_id = ?
+	`
+
+	var dataJSON string
+	err := queryRow.QueryRow(query, employeeID).Scan(&dataJSON)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	var dates []AvailabilityDate
+	if err := json.Unmarshal([]byte(dataJSON), &dates); err != nil {
+		return false, err
+	}
+
+	for _, day := range dates {
+		if day.Date != date {
+			continue
+		}
+		for _, slot := range day.Slots {
+			if slot.StartTime == startTime && slot.EndTime == endTime {
+				return slot.IsAvailable, nil
+			}
+		}
+	}
+
+	return false, nil
 }
 
 func NewID() string {
