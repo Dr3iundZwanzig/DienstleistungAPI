@@ -144,11 +144,11 @@ async function refreshAccessToken() {
         }
 
         const data = await refreshRes.json();
-        if (!data || !data.token) {
+        if (!data || !data.token || !data.refresh_token) {
             return false;
         }
 
-        persistAuthTokens(data.token, null);
+        persistAuthTokens(data.token, data.refresh_token);
         return true;
     })();
 

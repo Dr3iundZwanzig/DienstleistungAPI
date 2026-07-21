@@ -2,13 +2,16 @@ package main
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/Dr3iundZwanzig/DienstleistungAPI/auth"
+	"github.com/Dr3iundZwanzig/DienstleistungAPI/database"
 )
 
 func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, r *http.Request) {
 	type response struct {
-		Token string `json:"token"`
+		Token        string `json:"token"`
+		RefreshToken string `json:"refresh_token"`
 	}
 
 	refreshToken, err := auth.GetBearerToken(r.Header)
@@ -27,6 +30,22 @@ func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	newRefreshToken, err := auth.MakeRefreshToken()
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't create refresh token", err)
+		return
+	}
+
+	rotated, err := cfg.db.RotateRefreshToken(refreshToken, database.CreateRefreshTokenParams{
+		Token:     newRefreshToken,
+		UserID:    user.ID,
+		ExpiresAt: time.Now().UTC().Add(cfg.refreshTokenTTL),
+	})
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Couldn't rotate refresh token", err)
+		return
+	}
+
 	accessToken, err := auth.MakeJWT(
 		user.ID,
 		cfg.jwtSecret,
@@ -38,7 +57,8 @@ func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondWithJSON(w, http.StatusOK, response{
-		Token: accessToken,
+		Token:        accessToken,
+		RefreshToken: rotated.Token,
 	})
 }
 
