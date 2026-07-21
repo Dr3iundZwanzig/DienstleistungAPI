@@ -30,14 +30,27 @@ func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Hash the old token for rotation
+	oldTokenHash, err := auth.HashRefreshToken(refreshToken)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't hash refresh token", err)
+		return
+	}
+
 	newRefreshToken, err := auth.MakeRefreshToken()
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't create refresh token", err)
 		return
 	}
 
-	rotated, err := cfg.db.RotateRefreshToken(refreshToken, database.CreateRefreshTokenParams{
-		Token:     newRefreshToken,
+	newTokenHash, err := auth.HashRefreshToken(newRefreshToken)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't hash new refresh token", err)
+		return
+	}
+
+	_, err = cfg.db.RotateRefreshToken(oldTokenHash, database.CreateRefreshTokenParams{
+		Token:     newTokenHash,
 		UserID:    user.ID,
 		ExpiresAt: time.Now().UTC().Add(cfg.refreshTokenTTL),
 	})
@@ -50,6 +63,9 @@ func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, r *http.Request) {
 		user.ID,
 		cfg.jwtSecret,
 		cfg.refreshedAccessTokenTTL,
+		cfg.jwtIssuer,
+		cfg.jwtAudience,
+		"user",
 	)
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "Couldn't validate token", err)
@@ -58,7 +74,7 @@ func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, r *http.Request) {
 
 	respondWithJSON(w, http.StatusOK, response{
 		Token:        accessToken,
-		RefreshToken: rotated.Token,
+		RefreshToken: newRefreshToken,
 	})
 }
 
@@ -69,7 +85,13 @@ func (cfg *apiConfig) handlerRevoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = cfg.db.RevokeRefreshToken(refreshToken)
+	tokenHash, err := auth.HashRefreshToken(refreshToken)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't hash token", err)
+		return
+	}
+
+	err = cfg.db.RevokeRefreshToken(tokenHash)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't revoke session", err)
 		return

@@ -15,6 +15,8 @@ import (
 type apiConfig struct {
 	db                      database.Client
 	jwtSecret               string
+	jwtIssuer               string
+	jwtAudience             string
 	platform                string
 	filepathRoot            string
 	port                    string
@@ -75,6 +77,16 @@ func main() {
 		log.Fatal("JWT_SECRET environment variable is not set")
 	}
 
+	jwtIssuer := os.Getenv("JWT_ISSUER")
+	if jwtIssuer == "" {
+		jwtIssuer = "dienstleistung-api"
+	}
+
+	jwtAudience := os.Getenv("JWT_AUDIENCE")
+	if jwtAudience == "" {
+		jwtAudience = "dienstleistung-api-users"
+	}
+
 	platform := os.Getenv("PLATFORM")
 	if platform == "" {
 		log.Fatal("PLATFORM environment variable is not set")
@@ -100,6 +112,8 @@ func main() {
 	cfg := apiConfig{
 		db:                      db,
 		jwtSecret:               jwtSecret,
+		jwtIssuer:               jwtIssuer,
+		jwtAudience:             jwtAudience,
 		platform:                platform,
 		filepathRoot:            filepathRoot,
 		port:                    port,

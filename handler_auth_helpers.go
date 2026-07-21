@@ -16,7 +16,7 @@ func (cfg *apiConfig) authenticateExistingUser(w http.ResponseWriter, r *http.Re
 		return uuid.Nil, false
 	}
 
-	userID, err := auth.ValidateJWT(bearerToken, cfg.jwtSecret)
+	userID, err := auth.ValidateJWT(bearerToken, cfg.jwtSecret, cfg.jwtIssuer, cfg.jwtAudience)
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "Invalid or expired token", err)
 		return uuid.Nil, false
@@ -35,8 +35,7 @@ func (cfg *apiConfig) authenticateExistingUser(w http.ResponseWriter, r *http.Re
 	return userID, true
 }
 
-// requireStaffOrAdmin is the authorization seam for endpoints that should later be restricted
-// to staff/admin roles once role-based access control is added to the backend.
+// role check für staff/admin endpoints
 func (cfg *apiConfig) requireStaffOrAdmin(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
 	userID, ok := cfg.authenticateExistingUser(w, r)
 	if !ok {

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Dr3iundZwanzig/DienstleistungAPI/auth"
 	"github.com/google/uuid"
 )
 
@@ -85,7 +86,13 @@ func (c Client) GetUserByEmail(email string) (User, error) {
 	return user, nil
 }
 
-func (c Client) GetUserByRefreshToken(token string) (*User, error) {
+func (c Client) GetUserByRefreshToken(tokenPlaintext string) (*User, error) {
+	// Hash the plaintext token to match what's stored in the database
+	tokenHash, err := auth.HashRefreshToken(tokenPlaintext)
+	if err != nil {
+		return nil, err
+	}
+
 	query := `
 		SELECT u.id, u.email, u.created_at, u.updated_at, u.password, u.role
 		FROM users u
@@ -97,7 +104,7 @@ func (c Client) GetUserByRefreshToken(token string) (*User, error) {
 
 	var user User
 	var id string
-	err := c.db.QueryRow(query, token).Scan(&id, &user.Email, &user.CreatedAt, &user.UpdatedAt, &user.Password, &user.Role)
+	err = c.db.QueryRow(query, tokenHash).Scan(&id, &user.Email, &user.CreatedAt, &user.UpdatedAt, &user.Password, &user.Role)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil

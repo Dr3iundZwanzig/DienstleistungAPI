@@ -53,6 +53,9 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 		user.ID,
 		cfg.jwtSecret,
 		cfg.accessTokenTTL,
+		cfg.jwtIssuer,
+		cfg.jwtAudience,
+		"user", //hardcoded scope kann später geändert werden z.b: user, admin-user, mitarbeiter usw
 	)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't create access JWT", err)
@@ -65,9 +68,15 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	refreshTokenHash, err := auth.HashRefreshToken(refreshToken)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't hash refresh token", err)
+		return
+	}
+
 	_, err = cfg.db.CreateRefreshToken(database.CreateRefreshTokenParams{
 		UserID:    user.ID,
-		Token:     refreshToken,
+		Token:     refreshTokenHash,
 		ExpiresAt: time.Now().UTC().Add(cfg.refreshTokenTTL),
 	})
 	if err != nil {

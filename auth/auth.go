@@ -2,6 +2,7 @@ package auth
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -21,6 +22,12 @@ const (
 )
 
 var ErrNoAuthHeaderIncluded = errors.New("no auth header included in request")
+
+// CustomClaims extends jwt.RegisteredClaims with standardized claims
+type CustomClaims struct {
+	Scope string `json:"scope"`
+	jwt.RegisteredClaims
+}
 
 func HashPassword(password string) (string, error) {
 	hash, err := argon2id.CreateHash(password, argon2id.DefaultParams)
@@ -42,19 +49,28 @@ func MakeJWT(
 	userID uuid.UUID,
 	tokenSecret string,
 	expiresIn time.Duration,
+	issuer string,
+	audience string,
+	scope string,
 ) (string, error) {
 	signingKey := []byte(tokenSecret)
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
-		Issuer:    string(TokenTypeAccess),
-		IssuedAt:  jwt.NewNumericDate(time.Now().UTC()),
-		ExpiresAt: jwt.NewNumericDate(time.Now().UTC().Add(expiresIn)),
-		Subject:   userID.String(),
-	})
+	claims := CustomClaims{
+		Scope: scope,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    issuer,
+			Audience:  jwt.ClaimStrings{audience},
+			IssuedAt:  jwt.NewNumericDate(time.Now().UTC()),
+			ExpiresAt: jwt.NewNumericDate(time.Now().UTC().Add(expiresIn)),
+			Subject:   userID.String(),
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString(signingKey)
 }
 
-func ValidateJWT(tokenString, tokenSecret string) (uuid.UUID, error) {
-	claimsStruct := jwt.RegisteredClaims{}
+// kann erweitert werden um auch CustomClaims als return zu haben für witere überprüfung des scopes
+func ValidateJWT(tokenString, tokenSecret, expectedIssuer, expectedAudience string) (uuid.UUID, error) {
+	claimsStruct := CustomClaims{}
 	token, err := jwt.ParseWithClaims(
 		tokenString,
 		&claimsStruct,
@@ -73,8 +89,16 @@ func ValidateJWT(tokenString, tokenSecret string) (uuid.UUID, error) {
 	if err != nil {
 		return uuid.Nil, err
 	}
-	if issuer != string(TokenTypeAccess) {
+	if issuer != expectedIssuer {
 		return uuid.Nil, errors.New("invalid issuer")
+	}
+
+	audience, err := token.Claims.GetAudience()
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if len(audience) == 0 || audience[0] != expectedAudience {
+		return uuid.Nil, errors.New("invalid audience")
 	}
 
 	id, err := uuid.Parse(userIDString)
@@ -104,6 +128,22 @@ func MakeRefreshToken() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(token), nil
+}
+
+// HashRefreshToken hashes a refresh token using SHA-256 for deterministic storage
+// Unlike passwords, tokens need deterministic hashing to enable database queries
+func HashRefreshToken(token string) (string, error) {
+	hash := sha256.Sum256([]byte(token))
+	return fmt.Sprintf("%x", hash), nil
+}
+
+// VerifyRefreshToken compares a plaintext refresh token with its stored SHA-256 hash
+func VerifyRefreshToken(token, hash string) (bool, error) {
+	computedHash, err := HashRefreshToken(token)
+	if err != nil {
+		return false, err
+	}
+	return computedHash == hash, nil
 }
 
 func GetAPIKey(headers http.Header) (string, error) {
