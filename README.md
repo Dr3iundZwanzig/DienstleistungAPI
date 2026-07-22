@@ -19,6 +19,159 @@ Install the following tools before running the project:
 	- Linux: `build-essential`
 	- macOS: Xcode Command Line Tools
 
+### Windows CGO setup
+
+If you install `MSYS2/MinGW-w64` or `TDM-GCC`, there are usually a few extra steps before Go can build the SQLite dependency.
+
+After installing the compiler, do the following:
+
+1. Make sure `gcc` is installed.
+2. Add the compiler `bin` directory to your Windows `PATH`.
+3. Open a new terminal.
+4. Verify that `gcc` is available.
+5. Verify that the project builds.
+
+Example for MSYS2 UCRT64:
+
+```powershell
+pacman -S --needed mingw-w64-ucrt-x86_64-gcc
+```
+
+Typical MSYS2 compiler path:
+
+- `C:\msys64\ucrt64\bin`
+
+How to add this folder to your Windows `PATH`:
+
+1. Press the Windows key and search for `Environment Variables`.
+2. Open `Edit the system environment variables`.
+3. Click `Environment Variables...`.
+4. Under `User variables`, select `Path` and click `Edit`.
+5. Click `New` and add the compiler `bin` path, for example `C:\msys64\ucrt64\bin`.
+6. Confirm with `OK` on all dialogs.
+7. Open a new PowerShell window.
+
+You can also add it from PowerShell:
+
+```powershell
+$compilerBin = 'C:\msys64\ucrt64\bin'
+$userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+
+if (($userPath -split ';') -notcontains $compilerBin) {
+	[Environment]::SetEnvironmentVariable(
+		'Path',
+		($userPath.TrimEnd(';') + ';' + $compilerBin).TrimStart(';'),
+		'User'
+	)
+}
+```
+
+To verify the setup:
+
+```powershell
+gcc --version
+go version
+go build .
+```
+
+If you use TDM-GCC instead, the process is the same: add its `bin` directory to `PATH`, open a new terminal, and verify `gcc --version` before running `go build .`.
+
+Typical TDM-GCC compiler path:
+
+- `C:\TDM-GCC-64\bin`
+
+Example PowerShell command for TDM-GCC:
+
+```powershell
+$compilerBin = 'C:\TDM-GCC-64\bin'
+$userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+
+if (($userPath -split ';') -notcontains $compilerBin) {
+	[Environment]::SetEnvironmentVariable(
+		'Path',
+		($userPath.TrimEnd(';') + ';' + $compilerBin).TrimStart(';'),
+		'User'
+	)
+}
+```
+
+## Install Go
+
+If Go is not installed yet, use one of the following options.
+
+### Windows
+
+Download the installer from the official Go website and run it:
+
+- https://go.dev/dl/
+
+Or install with `winget`:
+
+```powershell
+winget install GoLang.Go
+```
+
+After installation, open a new terminal and verify:
+
+```powershell
+go version
+```
+
+### Linux
+
+Install Go from your distribution package manager or from the official tarball.
+
+Ubuntu/Debian:
+
+```bash
+sudo apt update
+sudo apt install golang-go
+```
+
+Fedora:
+
+```bash
+sudo dnf install golang
+```
+
+Arch Linux:
+
+```bash
+sudo pacman -S go
+```
+
+Verify the installation:
+
+```bash
+go version
+```
+
+### macOS
+
+Install with Homebrew:
+
+```bash
+brew install go
+```
+
+Or download the official installer:
+
+- https://go.dev/dl/
+
+Verify the installation:
+
+```bash
+go version
+```
+
+### Recommended version check
+
+This project targets Go 1.25. Confirm your version before continuing:
+
+```bash
+go version
+```
+
 ## Project Dependencies
 
 Go modules used by this project (from `go.mod`):
