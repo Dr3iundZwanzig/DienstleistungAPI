@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -200,14 +201,8 @@ func (cfg *apiConfig) handlerTestResetAndSeed(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	serviceSeedData := defaultSeedServicesTree()
-	if err := cfg.seedServices(serviceSeedData); err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't seed default services", err)
-		return
-	}
-
-	seedData := defaultSeedEmployees()
-	if err := cfg.seedEmployees(seedData); err != nil {
+	serviceSeedData, seedData, err := cfg.seedDatabase()
+	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't seed default test data", err)
 		return
 	}
@@ -217,4 +212,43 @@ func (cfg *apiConfig) handlerTestResetAndSeed(w http.ResponseWriter, r *http.Req
 		"seeded_employees": len(seedData),
 		"seeded_services":  countServiceNodes(serviceSeedData),
 	})
+}
+
+func (cfg *apiConfig) seedDatabase() ([]database.ServiceNode, []employeeSeedPayload, error) {
+	serviceSeedData := defaultSeedServicesTree()
+	if err := cfg.seedServices(serviceSeedData); err != nil {
+		return []database.ServiceNode{}, []employeeSeedPayload{}, err
+	}
+
+	seedData := defaultSeedEmployees()
+	if err := cfg.seedEmployees(seedData); err != nil {
+		return []database.ServiceNode{}, []employeeSeedPayload{}, err
+	}
+	return serviceSeedData, seedData, nil
+}
+
+func (cfg *apiConfig) ensureDatabaseSeeded() error {
+	services, err := cfg.db.GetServicesTree()
+	if err != nil {
+		return err
+	}
+
+	employees, err := cfg.db.GetEmployees()
+	if err != nil {
+		return err
+	}
+
+	servicesEmpty := len(services) == 0
+	employeesEmpty := len(employees) == 0
+
+	if servicesEmpty && employeesEmpty {
+		_, _, err := cfg.seedDatabase()
+		return err
+	}
+
+	if !servicesEmpty && !employeesEmpty {
+		return nil
+	}
+
+	return fmt.Errorf("database is partially seeded (services: %d, employees: %d); run test reset-and-seed endpoint or reset manually", len(services), len(employees))
 }

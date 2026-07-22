@@ -143,8 +143,8 @@ func (c *Client) autoMigrate() error {
 	if err != nil {
 		return err
 	}
-	return nil
 
+	return nil
 }
 
 func (c Client) Reset() error {

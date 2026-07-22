@@ -122,8 +122,8 @@ func main() {
 		refreshedAccessTokenTTL: refreshedAccessTokenTTL,
 	}
 
-	if err := cfg.db.SeedServicesIfEmpty(defaultSeedServicesTree()); err != nil {
-		log.Fatalf("Couldn't seed default services: %v", err)
+	if err := cfg.ensureDatabaseSeeded(); err != nil {
+		log.Fatalf("Couldn't ensure default database seed data: %v", err)
 	}
 
 	mux := http.NewServeMux()
