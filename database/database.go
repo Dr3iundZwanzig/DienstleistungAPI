@@ -144,6 +144,7 @@ func (c *Client) autoMigrate() error {
 		return err
 	}
 	return nil
+
 }
 
 func (c Client) Reset() error {

@@ -147,6 +147,92 @@
        border: 2px solid #f0a9a3;
    }
 
+   .booking-result {
+       position: fixed;
+       right: 20px;
+       bottom: 20px;
+       width: min(520px, calc(100vw - 32px));
+       z-index: 1050;
+       opacity: 0;
+       transform: translateY(16px);
+       pointer-events: none;
+       transition: opacity 0.25s ease, transform 0.25s ease;
+   }
+
+   .booking-result.visible {
+       opacity: 1;
+       transform: translateY(0);
+       pointer-events: auto;
+   }
+
+   .booking-result-card {
+       position: relative;
+       border-radius: 14px;
+       border: 1px solid #d9dde6;
+       background: #ffffff;
+       box-shadow: 0 14px 36px rgba(10, 15, 30, 0.2);
+       overflow: hidden;
+   }
+
+   .booking-result-success .booking-result-card {
+       border-color: #a8d8b7;
+   }
+
+   .booking-result-error .booking-result-card {
+       border-color: #f0b1ad;
+   }
+
+   .booking-result-title {
+       padding: 14px 44px 4px 16px;
+       font-size: 1.05em;
+       font-weight: 700;
+       color: #24324d;
+   }
+
+   .booking-result-success .booking-result-title {
+       color: #1f5e35;
+   }
+
+   .booking-result-error .booking-result-title {
+       color: #8a1f17;
+   }
+
+   .booking-result-description {
+       padding: 0 16px 12px;
+       color: #42516c;
+       font-size: 0.95em;
+   }
+
+   .booking-result-close {
+       position: absolute;
+       margin: 10px 10px 0 0;
+       top: 0;
+       right: 0;
+       width: 28px;
+       height: 28px;
+       border-radius: 50%;
+       border: 1px solid #d6dae4;
+       background: #fff;
+       color: #5c6883;
+       padding: 0;
+       font-size: 1.1em;
+       line-height: 1;
+   }
+
+   .booking-result-close:hover {
+       background: #f0f3f9;
+   }
+
+   @media (max-width: 640px) {
+       .booking-result {
+           right: 10px;
+           left: 10px;
+           width: auto;
+           bottom: 12px;
+       }
+
+   }
+
    .appointments-section {
        max-width: 900px;
        margin: 0 auto 20px;

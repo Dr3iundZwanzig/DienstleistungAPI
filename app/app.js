@@ -54,6 +54,7 @@ document.getElementById('logout-button').addEventListener('click', () => {
 let toastTimeoutId = null;
 let appointmentsVisible = false;
 let refreshRequestPromise = null;
+let bookingResultTimeoutId = null;
 
 function getAccessToken() {
     return localStorage.getItem('token');
@@ -273,6 +274,7 @@ function showLoggedOutState() {
     setAppointmentsPanelVisible(false);
     document.getElementById('step-services').style.display = 'none';
     setAppointmentsFeedback('');
+    clearBookingResult();
     document.getElementById('appointments-list').innerHTML = '';
 }
 // ansicht für eingeloggte user
@@ -319,6 +321,90 @@ function setAppointmentsFeedback(message, isError = false) {
         feedbackEl.textContent = '';
         toastTimeoutId = null;
     }, 3200);
+}
+
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function clearBookingResult() {
+    const bookingResultEl = document.getElementById('booking-result');
+    if (!bookingResultEl) {
+        return;
+    }
+
+    if (bookingResultTimeoutId) {
+        clearTimeout(bookingResultTimeoutId);
+        bookingResultTimeoutId = null;
+    }
+
+    bookingResultEl.classList.remove('visible', 'booking-result-success', 'booking-result-error');
+    bookingResultEl.innerHTML = '';
+}
+
+function buildBookingSuccessSummary(payload) {
+    if (!payload || typeof payload !== 'object') {
+        return 'Ihr Termin wurde erfolgreich gebucht.';
+    }
+
+    const appointment = payload.appointment && typeof payload.appointment === 'object'
+        ? payload.appointment
+        : payload;
+
+    const dateRaw = appointment.date || '';
+    const startTime = appointment.start_time || appointment.start || '';
+
+    if (dateRaw && startTime) {
+        return `Termin am ${formatAppointmentDate(dateRaw)} um ${startTime} gebucht.`;
+    }
+
+    if (dateRaw) {
+        return `Termin am ${formatAppointmentDate(dateRaw)} gebucht.`;
+    }
+
+    return 'Ihr Termin wurde erfolgreich gebucht.';
+}
+
+function setBookingResult(payload, isError = false) {
+    const bookingResultEl = document.getElementById('booking-result');
+    if (!bookingResultEl) {
+        return;
+    }
+
+    if (bookingResultTimeoutId) {
+        clearTimeout(bookingResultTimeoutId);
+        bookingResultTimeoutId = null;
+    }
+
+    const title = isError ? 'Buchung fehlgeschlagen' : 'Termin erfolgreich gebucht';
+    const description = isError
+        ? (typeof payload === 'string' ? payload : 'Bitte versuchen Sie es erneut.')
+        : buildBookingSuccessSummary(payload);
+
+    bookingResultEl.innerHTML = `
+        <div class="booking-result-card">
+            <button class="booking-result-close" type="button" aria-label="Meldung schließen">×</button>
+            <div class="booking-result-title">${escapeHtml(title)}</div>
+            <div class="booking-result-description">${escapeHtml(description)}</div>
+        </div>
+    `;
+
+    bookingResultEl.classList.remove('booking-result-success', 'booking-result-error');
+    bookingResultEl.classList.add(isError ? 'booking-result-error' : 'booking-result-success', 'visible');
+
+    const closeButton = bookingResultEl.querySelector('.booking-result-close');
+    if (closeButton) {
+        closeButton.addEventListener('click', clearBookingResult);
+    }
+
+    bookingResultTimeoutId = window.setTimeout(() => {
+        clearBookingResult();
+    }, 12000);
 }
 
 function formatAppointmentDate(dateString) {
@@ -1453,9 +1539,9 @@ document.getElementById("confirm-appointment").addEventListener("click", async (
         await loadUserAppointments();
         resetBookingFlow();
 
-        alert(`Termin gesendet!\n\n${JSON.stringify(data, null, 2)}`);
+        setBookingResult(data);
     } catch (error) {
-        alert(`Fehler: ${error.message}`);
+        setBookingResult(error.message, true);
     }
 });
 
