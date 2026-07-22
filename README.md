@@ -185,6 +185,71 @@ Go modules used by this project (from `go.mod`):
 
 ## Installation
 
+### Install Git
+
+Git must be installed before you can clone this repository.
+
+Verify whether Git is already installed:
+
+```bash
+git --version
+```
+
+If the command is not found, install Git for your platform:
+
+#### Windows
+
+Install from the official website:
+
+- https://git-scm.com/download/win
+
+Or install with `winget`:
+
+```powershell
+winget install Git.Git
+```
+
+#### Linux
+
+Ubuntu/Debian:
+
+```bash
+sudo apt update
+sudo apt install git
+```
+
+Fedora:
+
+```bash
+sudo dnf install git
+```
+
+Arch Linux:
+
+```bash
+sudo pacman -S git
+```
+
+#### macOS
+
+Install with Homebrew:
+
+```bash
+brew install git
+```
+
+Or install Xcode Command Line Tools:
+
+```bash
+xcode-select --install
+```
+
+After installation, open a new terminal and verify:
+
+```bash
+git --version
+```
+
 ### Install from source
 
 Clone the repository and enter the project directory:
