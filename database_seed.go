@@ -8,6 +8,8 @@ import (
 	"github.com/Dr3iundZwanzig/DienstleistungAPI/database"
 )
 
+//test daten für die datenbank
+
 type employeeSeedPayload struct {
 	ID          string   `json:"id"`
 	Name        string   `json:"name"`

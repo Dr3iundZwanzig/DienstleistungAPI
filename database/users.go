@@ -87,7 +87,7 @@ func (c Client) GetUserByEmail(email string) (User, error) {
 }
 
 func (c Client) GetUserByRefreshToken(tokenPlaintext string) (*User, error) {
-	// Hash the plaintext token to match what's stored in the database
+
 	tokenHash, err := auth.HashRefreshToken(tokenPlaintext)
 	if err != nil {
 		return nil, err

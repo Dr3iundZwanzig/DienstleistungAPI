@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// authenticateExistingUser is the shared guard for handlers protected by access JWTs.
+// handler für auth von usern
 func (cfg *apiConfig) authenticateExistingUser(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
 	bearerToken, err := auth.GetBearerToken(r.Header)
 	if err != nil {
@@ -35,7 +35,7 @@ func (cfg *apiConfig) authenticateExistingUser(w http.ResponseWriter, r *http.Re
 	return userID, true
 }
 
-// role check für staff/admin endpoints
+// role check für staff/admin endpoints später auch mit claims scope check
 func (cfg *apiConfig) requireStaffOrAdmin(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
 	userID, ok := cfg.authenticateExistingUser(w, r)
 	if !ok {

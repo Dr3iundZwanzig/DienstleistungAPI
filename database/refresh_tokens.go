@@ -36,7 +36,6 @@ func (c Client) CreateRefreshToken(params CreateRefreshTokenParams) (RefreshToke
 		return RefreshToken{}, err
 	}
 
-	// Return the created token with timestamps
 	now := time.Now().UTC()
 	return RefreshToken{
 		CreateRefreshTokenParams: params,
@@ -90,8 +89,7 @@ func (c Client) DeleteRefreshToken(tokenHash string) error {
 	return err
 }
 
-// RotateRefreshToken revokes an existing valid refresh token and mints a replacement
-// in a single transaction so the old token cannot be reused.
+// revokes token --> neuer refresh token
 func (c Client) RotateRefreshToken(oldTokenHash string, params CreateRefreshTokenParams) (RefreshToken, error) {
 	tx, err := c.db.Begin()
 	if err != nil {

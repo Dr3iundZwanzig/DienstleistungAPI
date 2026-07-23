@@ -230,6 +230,7 @@ func (cfg *apiConfig) handlerAppointmentsUpdate(w http.ResponseWriter, r *http.R
 	respondWithJSON(w, http.StatusOK, appointment)
 }
 
+// test handler um alle termine einfacher zu löschen
 func (cfg *apiConfig) handlerAppointmentsCancelAll(w http.ResponseWriter, r *http.Request) {
 	userID, ok := cfg.authenticateExistingUser(w, r)
 	if !ok {

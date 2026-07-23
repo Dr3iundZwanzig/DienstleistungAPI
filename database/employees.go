@@ -280,8 +280,7 @@ func (c Client) resolveEmployeeServiceIDs(serviceIDs []string, serviceNames []st
 	return ids, nil
 }
 
-// linkEmployeeServicesTx creates employee->service join rows within the caller's transaction.
-// It skips duplicates so a service is linked only once per employee in a single call.
+// employee->service join rows
 func linkEmployeeServicesTx(tx *sql.Tx, employeeID string, serviceIDs []string) error {
 	if len(serviceIDs) == 0 {
 		return nil

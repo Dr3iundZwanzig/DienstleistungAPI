@@ -23,7 +23,7 @@ const (
 
 var ErrNoAuthHeaderIncluded = errors.New("no auth header included in request")
 
-// CustomClaims extends jwt.RegisteredClaims with standardized claims
+// erweitert RegisteredClaims mit CustomClaims
 type CustomClaims struct {
 	Scope string `json:"scope"`
 	jwt.RegisteredClaims
@@ -130,14 +130,13 @@ func MakeRefreshToken() (string, error) {
 	return hex.EncodeToString(token), nil
 }
 
-// HashRefreshToken hashes a refresh token using SHA-256 for deterministic storage
-// Unlike passwords, tokens need deterministic hashing to enable database queries
+// hashes refresh token mit SHA-256
 func HashRefreshToken(token string) (string, error) {
 	hash := sha256.Sum256([]byte(token))
 	return fmt.Sprintf("%x", hash), nil
 }
 
-// VerifyRefreshToken compares a plaintext refresh token with its stored SHA-256 hash
+// vergleicht token mit hash in der datenbank
 func VerifyRefreshToken(token, hash string) (bool, error) {
 	computedHash, err := HashRefreshToken(token)
 	if err != nil {

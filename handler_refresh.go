@@ -30,7 +30,7 @@ func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Hash the old token for rotation
+	// Hash des alten token für rotation
 	oldTokenHash, err := auth.HashRefreshToken(refreshToken)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't hash refresh token", err)
@@ -48,7 +48,7 @@ func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't hash new refresh token", err)
 		return
 	}
-
+	//token rotation refreshed auch ttl
 	_, err = cfg.db.RotateRefreshToken(oldTokenHash, database.CreateRefreshTokenParams{
 		Token:     newTokenHash,
 		UserID:    user.ID,
@@ -65,7 +65,7 @@ func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, r *http.Request) {
 		cfg.refreshedAccessTokenTTL,
 		cfg.jwtIssuer,
 		cfg.jwtAudience,
-		"user",
+		"user", // hardcoded scope später ändern
 	)
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "Couldn't validate token", err)

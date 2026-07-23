@@ -51,21 +51,6 @@ How to add this folder to your Windows `PATH`:
 6. Confirm with `OK` on all dialogs.
 7. Open a new PowerShell window.
 
-You can also add it from PowerShell:
-
-```powershell
-$compilerBin = 'C:\msys64\ucrt64\bin'
-$userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-
-if (($userPath -split ';') -notcontains $compilerBin) {
-	[Environment]::SetEnvironmentVariable(
-		'Path',
-		($userPath.TrimEnd(';') + ';' + $compilerBin).TrimStart(';'),
-		'User'
-	)
-}
-```
-
 To verify the setup:
 
 ```powershell
@@ -80,20 +65,6 @@ Typical TDM-GCC compiler path:
 
 - `C:\TDM-GCC-64\bin`
 
-Example PowerShell command for TDM-GCC:
-
-```powershell
-$compilerBin = 'C:\TDM-GCC-64\bin'
-$userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-
-if (($userPath -split ';') -notcontains $compilerBin) {
-	[Environment]::SetEnvironmentVariable(
-		'Path',
-		($userPath.TrimEnd(';') + ';' + $compilerBin).TrimStart(';'),
-		'User'
-	)
-}
-```
 
 ## Install Go
 

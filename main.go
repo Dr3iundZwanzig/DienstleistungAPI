@@ -60,13 +60,14 @@ func readIntEnvOrDefault(envName string, fallback int) int {
 }
 
 func main() {
+	//.env file laden
 	godotenv.Load(".env")
 
 	pathToDB := os.Getenv("DB_PATH")
 	if pathToDB == "" {
 		log.Fatal("DB_URL must be set")
 	}
-
+	//db client erstellen
 	db, err := database.NewClient(pathToDB)
 	if err != nil {
 		log.Fatalf("Couldn't connect to database: %v", err)
@@ -102,6 +103,7 @@ func main() {
 		log.Fatal("PORT environment variable is not set")
 	}
 
+	// .env variabeln standart werte wenn nicht vorhanden
 	accessTokenTTL := readDurationEnvOrDefault("ACCESS_TOKEN_TTL", time.Hour*24)
 	refreshTokenTTL := readDurationEnvOrDefault("REFRESH_TOKEN_TTL", time.Hour*24*7)
 	refreshedAccessTokenTTL := readDurationEnvOrDefault("REFRESH_ACCESS_TOKEN_TTL", time.Hour)
@@ -121,22 +123,25 @@ func main() {
 		refreshTokenTTL:         refreshTokenTTL,
 		refreshedAccessTokenTTL: refreshedAccessTokenTTL,
 	}
-
+	//datenbank mit test daten seeden wenn keine vorhanden sind
 	if err := cfg.ensureDatabaseSeeded(); err != nil {
 		log.Fatalf("Couldn't ensure default database seed data: %v", err)
 	}
 
 	mux := http.NewServeMux()
+	// file server für das frontend
 	appHandler := http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot)))
 	mux.Handle("/app/", appHandler)
+	// login/token refresh limiters
 	loginLimiter := newFixedWindowRateLimiter(time.Minute, loginRateLimitPerMinute)
 	loginFailureLimiter := newFixedWindowRateLimiter(time.Minute, loginFailedRateLimitPerMinute)
 	refreshLimiter := newFixedWindowRateLimiter(time.Minute, refreshRateLimitPerMinute)
 
+	//api auth endpoints
 	mux.HandleFunc("POST /api/login", rateLimitByIP("login", loginLimiter, rateLimitFailedLoginsByIP("login_failed", loginFailureLimiter, cfg.handlerLogin)))
 	mux.HandleFunc("POST /api/refresh", rateLimitByIP("refresh", refreshLimiter, cfg.handlerRefresh))
 	mux.HandleFunc("POST /api/revoke", cfg.handlerRevoke)
-
+	//api endpoints
 	mux.HandleFunc("POST /api/users", cfg.handlerUsersCreate)
 	mux.HandleFunc("GET /api/appointments", cfg.handlerAppointmentsList)
 	mux.HandleFunc("POST /api/appointments", cfg.handlerAppointmentsCreate)
@@ -147,6 +152,7 @@ func main() {
 	mux.HandleFunc("GET /api/employees", cfg.handlerEmployeesList)
 	mux.HandleFunc("POST /api/employees/resolve", cfg.handlerEmployeesResolve)
 	mux.HandleFunc("GET /api/services/tree", cfg.handlerServicesTree)
+	//api test endpoints
 	mux.HandleFunc("POST /api/test/reset-and-seed", cfg.handlerTestResetAndSeed)
 	mux.HandleFunc("DELETE /api/appointments/delete", cfg.handlerAppointmentsCancelAll)
 
@@ -156,5 +162,6 @@ func main() {
 	}
 
 	log.Printf("Serving on: http://localhost:%s/app/\n", port)
+	//server starten
 	log.Fatal(srv.ListenAndServe())
 }

@@ -29,7 +29,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 document.getElementById('refresh-appointments').addEventListener('click', async () => {
     await loadUserAppointments();
 });
-
+// termine anzeigen oder ausblenden
 document.getElementById('toggle-appointments').addEventListener('click', async () => {
     const nextVisible = !appointmentsVisible;
     setAppointmentsPanelVisible(nextVisible);
@@ -37,7 +37,7 @@ document.getElementById('toggle-appointments').addEventListener('click', async (
         await loadUserAppointments();
     }
 });
-
+// test button nur um termine schneller zu löschen
 document.getElementById('cancle-all-appintments').addEventListener('click', async () => {
     await cancleAllAppointments();
 });
@@ -64,7 +64,7 @@ function getRefreshToken() {
     return localStorage.getItem('refresh_token');
 }
 
-// speichert beider tokens zentral im localStorage
+// speichert beider tokens lokal im speicher
 function persistAuthTokens(accessToken, refreshToken) {
     if (accessToken) {
         localStorage.setItem('token', accessToken);
@@ -260,7 +260,7 @@ async function signup() {
         alert(`Error: ${error.message}`);
     }
 }
-
+//logout und token lokal löschen
 function logout() {
     const refreshToken = getRefreshToken();
     void revokeRefreshTokenSilently(refreshToken);
@@ -322,7 +322,7 @@ function setAppointmentsFeedback(message, isError = false) {
         toastTimeoutId = null;
     }, 3200);
 }
-
+// html zu normalen text
 function escapeHtml(value) {
     return String(value)
         .replace(/&/g, '&amp;')
@@ -331,7 +331,7 @@ function escapeHtml(value) {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
 }
-
+// termin gebucht anzeige entfernen
 function clearBookingResult() {
     const bookingResultEl = document.getElementById('booking-result');
     if (!bookingResultEl) {
@@ -346,7 +346,7 @@ function clearBookingResult() {
     bookingResultEl.classList.remove('visible', 'booking-result-success', 'booking-result-error');
     bookingResultEl.innerHTML = '';
 }
-
+// termin gebucht anzeige nach erfolg
 function buildBookingSuccessSummary(payload) {
     if (!payload || typeof payload !== 'object') {
         return 'Ihr Termin wurde erfolgreich gebucht.';
@@ -499,7 +499,7 @@ async function fetchAvailabilityForEmployee(employeeID) {
 
     return data;
 }
-
+// alle termine für einen tag
 function buildSlotOptionsForDate(availability, date) {
     const day = (availability.dates || []).find((entry) => entry.date === date);
     if (!day || !Array.isArray(day.slots)) {
@@ -569,7 +569,7 @@ async function toggleAppointmentEditor(card, appointment) {
                 </label>
             </div>
             <div class="appointment-edit-actions">
-                <button type="button" class="appointment-edit-save">Aenderungen speichern</button>
+                <button type="button" class="appointment-edit-save">Änderungen speichern</button>
                 <button type="button" class="appointment-edit-cancel">Abbrechen</button>
             </div>
     `;
@@ -840,7 +840,7 @@ async function loadUserAppointments() {
 }
 
 let servicesTree = { data: [] };
-
+// service tree laden aus datenbank
 async function loadServicesTree() {
     try {
         const res = await apiFetch('/api/services/tree');
@@ -860,9 +860,9 @@ async function loadServicesTree() {
     servicesTree = { data: [] };
 }
 
-// --- Mitarbeiter daten in db speichern mit der api ---
+// Mitarbeiter daten in db speichern mit der api
 let employeesData = { data: [] };
-// --- Mitarbeiter daten von der db laden---
+// Mitarbeiter daten von der db laden
 async function loadEmployees() {
     try {
         const res = await apiFetch('/api/employees');
@@ -876,12 +876,12 @@ async function loadEmployees() {
         employeesData = { data: [] };
     }
 }
-// --- Termine sind nun im backend ---
+// Termine sind nun im backend
 let availabilityData = {
     employee_id: null,
     dates: []
 };
-
+// mitarbeiter zuweisen wenn keine präferenz ausgewählt wird
 async function getAvailabilityEmployeeId() {
     if (selectedEmployee && selectedEmployee !== 'no_preference') {
         return selectedEmployee;
@@ -911,7 +911,7 @@ async function getAvailabilityEmployeeId() {
 
     return null;
 }
-
+// verfügbarkeit per mitarbeiter von der db erhalten
 async function loadAvailability(employeeId) {
     if (employeeId === undefined) {
         employeeId = await getAvailabilityEmployeeId();
@@ -1545,4 +1545,4 @@ document.getElementById("confirm-appointment").addEventListener("click", async (
     }
 });
 
-// --- Initial render happens after data loading in DOMContentLoaded ---
+// --- Initial render erst nachdem alle date in DOMContentLoaded geladen wurden ---

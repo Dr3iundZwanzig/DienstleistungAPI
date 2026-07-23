@@ -37,6 +37,7 @@ func (cfg *apiConfig) handlerUsersCreate(w http.ResponseWriter, r *http.Request)
 		Email:    params.Email,
 		Password: hashedPassword,
 	})
+	//database error für bereits exestierende emails
 	if err != nil && err.Error() == "UNIQUE constraint failed: users.email" {
 		respondWithError(w, http.StatusConflict, "Email already exists", err)
 		return

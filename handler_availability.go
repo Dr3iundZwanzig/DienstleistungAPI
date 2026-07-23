@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/Dr3iundZwanzig/DienstleistungAPI/database"
@@ -20,16 +21,9 @@ func (cfg *apiConfig) handlerAvailabilityGet(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if availability == nil {
-		seededAvailability, seedErr := cfg.db.CreateAvailability(database.CreateAvailabilityParams{
-			EmployeeID: employeeID,
-			Dates:      buildSeedAvailabilityDates(),
-		})
-		if seedErr != nil {
-			respondWithError(w, http.StatusInternalServerError, "Couldn't seed availability", seedErr)
-			return
-		}
-		respondWithJSON(w, http.StatusOK, seededAvailability)
+		respondWithError(w, http.StatusInternalServerError, "No availability in database, run reset-and-seed", fmt.Errorf("Error no availability"))
 		return
+
 	}
 
 	respondWithJSON(w, http.StatusOK, availability)
