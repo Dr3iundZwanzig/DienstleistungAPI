@@ -45,11 +45,11 @@ Typischer MSYS2-Compilerpfad:
 
 So fügen Sie diesen Ordner zu Ihrem Windows-`PATH` hinzu:
 
-1. Drücken Sie die Windows-Taste und suchen Sie nach `Environment Variables`.
-2. Öffnen Sie `Edit the system environment variables`.
-3. Klicken Sie auf `Environment Variables...`.
-4. Unter `User variables` wählen Sie `Path` und klicken auf `Edit`.
-5. Klicken Sie auf `New` und fügen Sie den Compiler-`bin`-Pfad hinzu, z. B. `C:\msys64\ucrt64\bin`.
+1. Drücken Sie die Windows-Taste und suchen Sie nach `Umgebungsvariablen`.
+2. Öffnen Sie `Systemumgebungsvariablen bearbeiten`.
+3. Klicken Sie auf `Umgebungsvariablen...`.
+4. Unter `Benutzervariablen` wählen Sie `Path` und klicken auf `Bearbeiten`.
+5. Klicken Sie auf `Neu` und fügen Sie den Compiler-`bin`-Pfad hinzu, z. B. `C:\msys64\ucrt64\bin`.
 6. Bestätigen Sie alle Dialoge mit `OK`.
 7. Öffnen Sie ein neues PowerShell-Fenster.
 
@@ -243,7 +243,7 @@ Projekt bauen, um Toolchain und Abhängigkeiten zu prüfen:
 go build .
 ```
 
-API direkt aus dem Quellcode starten:
+API direkt aus dem Ordner starten:
 
 ```bash
 go run .
