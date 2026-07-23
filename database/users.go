@@ -17,10 +17,11 @@ const (
 )
 
 type User struct {
-	ID        uuid.UUID `json:"id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Role      string    `json:"role"`
+	ID             uuid.UUID `json:"id"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+	SessionVersion int       `json:"session_version"`
+	Role           string    `json:"role"`
 	CreateUserParams
 }
 
@@ -35,7 +36,8 @@ func (c Client) GetUsers() ([]User, error) {
 		SELECT
 			id,
 			email,
-			role
+			role,
+			session_version
 		FROM users
 	`
 
@@ -49,7 +51,7 @@ func (c Client) GetUsers() ([]User, error) {
 	for rows.Next() {
 		var user User
 		var id string
-		if err := rows.Scan(&id, &user.Email, &user.Role); err != nil {
+		if err := rows.Scan(&id, &user.Email, &user.Role, &user.SessionVersion); err != nil {
 			return nil, err
 		}
 		user.Role = normalizeUserRole(user.Role)
@@ -65,13 +67,13 @@ func (c Client) GetUsers() ([]User, error) {
 
 func (c Client) GetUserByEmail(email string) (User, error) {
 	query := `
-		SELECT id, created_at, updated_at, email, password, role
+		SELECT id, created_at, updated_at, email, password, role, session_version
 		FROM users
 		WHERE email = ?
 	`
 	var user User
 	var id string
-	err := c.db.QueryRow(query, email).Scan(&id, &user.CreatedAt, &user.UpdatedAt, &user.Email, &user.Password, &user.Role)
+	err := c.db.QueryRow(query, email).Scan(&id, &user.CreatedAt, &user.UpdatedAt, &user.Email, &user.Password, &user.Role, &user.SessionVersion)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return User{}, nil
@@ -94,7 +96,7 @@ func (c Client) GetUserByRefreshToken(tokenPlaintext string) (*User, error) {
 	}
 
 	query := `
-		SELECT u.id, u.email, u.created_at, u.updated_at, u.password, u.role
+		SELECT u.id, u.email, u.created_at, u.updated_at, u.password, u.role, u.session_version
 		FROM users u
 		JOIN refresh_tokens rt ON u.id = rt.user_id
 		WHERE rt.token = ?
@@ -104,7 +106,7 @@ func (c Client) GetUserByRefreshToken(tokenPlaintext string) (*User, error) {
 
 	var user User
 	var id string
-	err = c.db.QueryRow(query, tokenHash).Scan(&id, &user.Email, &user.CreatedAt, &user.UpdatedAt, &user.Password, &user.Role)
+	err = c.db.QueryRow(query, tokenHash).Scan(&id, &user.Email, &user.CreatedAt, &user.UpdatedAt, &user.Password, &user.Role, &user.SessionVersion)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -140,13 +142,13 @@ func (c Client) CreateUser(params CreateUserParams) (*User, error) {
 
 func (c Client) GetUser(id uuid.UUID) (*User, error) {
 	query := `
-		SELECT id, created_at, updated_at, email, password, role
+		SELECT id, created_at, updated_at, email, password, role, session_version
 		FROM users
 		WHERE id = ?
 	`
 	var user User
 	var idStr string
-	err := c.db.QueryRow(query, id.String()).Scan(&idStr, &user.CreatedAt, &user.UpdatedAt, &user.Email, &user.Password, &user.Role)
+	err := c.db.QueryRow(query, id.String()).Scan(&idStr, &user.CreatedAt, &user.UpdatedAt, &user.Email, &user.Password, &user.Role, &user.SessionVersion)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -168,6 +170,61 @@ func (c Client) DeleteUser(id uuid.UUID) error {
 	`
 	_, err := c.db.Exec(query, id.String())
 	return err
+}
+
+// setzt user session hoch um eins
+func (c Client) IncrementUserSessionVersion(id uuid.UUID) error {
+	query := `
+		UPDATE users
+		SET session_version = session_version + 1,
+		    updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`
+	_, err := c.db.Exec(query, id.String())
+	return err
+}
+
+// setzt user session hoch um eins und revoked tokens
+func (c Client) InvalidateUserSessions(id uuid.UUID) error {
+	tx, err := c.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	incrementQuery := `
+		UPDATE users
+		SET session_version = session_version + 1,
+		    updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`
+	_, err = tx.Exec(incrementQuery, id.String())
+	if err != nil {
+		return err
+	}
+
+	revokeRefreshQuery := `
+		UPDATE refresh_tokens
+		SET revoked_at = CURRENT_TIMESTAMP,
+		    updated_at = CURRENT_TIMESTAMP
+		WHERE user_id = ?
+		  AND revoked_at IS NULL
+	`
+	_, err = tx.Exec(revokeRefreshQuery, id.String())
+	if err != nil {
+		return err
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func normalizeUserRole(role string) string {

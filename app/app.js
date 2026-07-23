@@ -55,6 +55,7 @@ let toastTimeoutId = null;
 let appointmentsVisible = false;
 let refreshRequestPromise = null;
 let bookingResultTimeoutId = null;
+let logoutAllInFlight = false;
 
 function getAccessToken() {
     return localStorage.getItem('token');
@@ -102,6 +103,30 @@ async function revokeRefreshTokenSilently(refreshToken) {
         // user wird ausgeloggt auch wenn das backend nicht erreichbar ist oder /api/revoke nicht klappt
     } finally {
         revokeInFlight = false;
+    }
+}
+
+// api request um alle sessions des users zu beenden
+async function logoutAllSessionsSilently(accessToken) {
+    if (!accessToken || logoutAllInFlight) {
+        return false;
+    }
+
+    logoutAllInFlight = true;
+    try {
+        const res = await fetch('/api/logout-all', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+            },
+        });
+
+        return res.ok;
+    } catch (_) {
+        // user wird trotzdem lokal ausgeloggt wenn backend nicht erreichbar ist
+        return false;
+    } finally {
+        logoutAllInFlight = false;
     }
 }
 
@@ -262,8 +287,16 @@ async function signup() {
 }
 //logout und token lokal löschen
 function logout() {
+    const accessToken = getAccessToken();
     const refreshToken = getRefreshToken();
-    void revokeRefreshTokenSilently(refreshToken);
+
+    void (async () => {
+        const logoutAllSucceeded = await logoutAllSessionsSilently(accessToken);
+        if (!logoutAllSucceeded) {
+            await revokeRefreshTokenSilently(refreshToken);
+        }
+    })();
+
     clearAuthTokens();
     showLoggedOutState();
 }

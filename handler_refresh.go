@@ -59,13 +59,14 @@ func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accessToken, err := auth.MakeJWT(
+	accessToken, err := auth.MakeJWTWithSessionVersion(
 		user.ID,
 		cfg.jwtSecret,
 		cfg.refreshedAccessTokenTTL,
 		cfg.jwtIssuer,
 		cfg.jwtAudience,
 		"user", // hardcoded scope später ändern
+		user.SessionVersion,
 	)
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "Couldn't validate token", err)
@@ -94,6 +95,22 @@ func (cfg *apiConfig) handlerRevoke(w http.ResponseWriter, r *http.Request) {
 	err = cfg.db.RevokeRefreshToken(tokenHash)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't revoke session", err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// logout für user
+func (cfg *apiConfig) handlerLogoutAll(w http.ResponseWriter, r *http.Request) {
+	userID, ok := cfg.authenticateExistingUser(w, r)
+	if !ok {
+		return
+	}
+
+	err := cfg.db.InvalidateUserSessions(userID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't invalidate sessions", err)
 		return
 	}
 

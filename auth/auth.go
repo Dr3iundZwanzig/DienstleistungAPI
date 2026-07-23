@@ -25,7 +25,8 @@ var ErrNoAuthHeaderIncluded = errors.New("no auth header included in request")
 
 // erweitert RegisteredClaims mit CustomClaims
 type CustomClaims struct {
-	Scope string `json:"scope"`
+	Scope          string `json:"scope"`
+	SessionVersion int    `json:"session_version"`
 	jwt.RegisteredClaims
 }
 
@@ -53,9 +54,26 @@ func MakeJWT(
 	audience string,
 	scope string,
 ) (string, error) {
+	return MakeJWTWithSessionVersion(userID, tokenSecret, expiresIn, issuer, audience, scope, 1)
+}
+
+func MakeJWTWithSessionVersion(
+	userID uuid.UUID,
+	tokenSecret string,
+	expiresIn time.Duration,
+	issuer string,
+	audience string,
+	scope string,
+	sessionVersion int,
+) (string, error) {
+	if sessionVersion <= 0 {
+		sessionVersion = 1
+	}
+
 	signingKey := []byte(tokenSecret)
 	claims := CustomClaims{
-		Scope: scope,
+		Scope:          scope,
+		SessionVersion: sessionVersion,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    issuer,
 			Audience:  jwt.ClaimStrings{audience},
@@ -68,8 +86,17 @@ func MakeJWT(
 	return token.SignedString(signingKey)
 }
 
-// kann erweitert werden um auch CustomClaims als return zu haben für witere überprüfung des scopes
+// testing
 func ValidateJWT(tokenString, tokenSecret, expectedIssuer, expectedAudience string) (uuid.UUID, error) {
+	userID, _, err := ValidateJWTClaims(tokenString, tokenSecret, expectedIssuer, expectedAudience)
+	if err != nil {
+		return uuid.Nil, err
+	}
+
+	return userID, nil
+}
+
+func ValidateJWTClaims(tokenString, tokenSecret, expectedIssuer, expectedAudience string) (uuid.UUID, CustomClaims, error) {
 	claimsStruct := CustomClaims{}
 	token, err := jwt.ParseWithClaims(
 		tokenString,
@@ -77,35 +104,42 @@ func ValidateJWT(tokenString, tokenSecret, expectedIssuer, expectedAudience stri
 		func(token *jwt.Token) (interface{}, error) { return []byte(tokenSecret), nil },
 	)
 	if err != nil {
-		return uuid.Nil, err
+		return uuid.Nil, CustomClaims{}, err
+	}
+	if !token.Valid {
+		return uuid.Nil, CustomClaims{}, errors.New("invalid token")
 	}
 
 	userIDString, err := token.Claims.GetSubject()
 	if err != nil {
-		return uuid.Nil, err
+		return uuid.Nil, CustomClaims{}, err
 	}
 
 	issuer, err := token.Claims.GetIssuer()
 	if err != nil {
-		return uuid.Nil, err
+		return uuid.Nil, CustomClaims{}, err
 	}
 	if issuer != expectedIssuer {
-		return uuid.Nil, errors.New("invalid issuer")
+		return uuid.Nil, CustomClaims{}, errors.New("invalid issuer")
 	}
 
 	audience, err := token.Claims.GetAudience()
 	if err != nil {
-		return uuid.Nil, err
+		return uuid.Nil, CustomClaims{}, err
 	}
 	if len(audience) == 0 || audience[0] != expectedAudience {
-		return uuid.Nil, errors.New("invalid audience")
+		return uuid.Nil, CustomClaims{}, errors.New("invalid audience")
+	}
+
+	if claimsStruct.SessionVersion <= 0 {
+		return uuid.Nil, CustomClaims{}, errors.New("invalid session version")
 	}
 
 	id, err := uuid.Parse(userIDString)
 	if err != nil {
-		return uuid.Nil, fmt.Errorf("invalid user ID: %w", err)
+		return uuid.Nil, CustomClaims{}, fmt.Errorf("invalid user ID: %w", err)
 	}
-	return id, nil
+	return id, claimsStruct, nil
 }
 
 func GetBearerToken(headers http.Header) (string, error) {

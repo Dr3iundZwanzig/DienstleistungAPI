@@ -141,6 +141,7 @@ func main() {
 	mux.HandleFunc("POST /api/login", rateLimitByIP("login", loginLimiter, rateLimitFailedLoginsByIP("login_failed", loginFailureLimiter, cfg.handlerLogin)))
 	mux.HandleFunc("POST /api/refresh", rateLimitByIP("refresh", refreshLimiter, cfg.handlerRefresh))
 	mux.HandleFunc("POST /api/revoke", cfg.handlerRevoke)
+	mux.HandleFunc("POST /api/logout-all", cfg.handlerLogoutAll)
 	//api endpoints
 	mux.HandleFunc("POST /api/users", cfg.handlerUsersCreate)
 	mux.HandleFunc("GET /api/appointments", cfg.handlerAppointmentsList)

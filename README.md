@@ -1,5 +1,7 @@
 # DienstleistungAPI
 
+Language: English | [Deutsch](README.de.md)
+
 REST API for appointment booking and service management (users, employees, availability, services, and authentication).
 
 ## Tech Stack
@@ -280,53 +282,6 @@ Notes:
 - For local development, `go run .` is usually the simplest workflow.
 - The app still requires your `.env` values and a valid `FILEPATH_ROOT` path when you run the installed binary.
 
-### Windows PowerShell quick setup
-
-Add the default Go bin directory to your user `PATH`:
-
-```powershell
-$goBin = Join-Path $env:USERPROFILE 'go\bin'
-$userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-
-if (($userPath -split ';') -notcontains $goBin) {
-	[Environment]::SetEnvironmentVariable(
-		'Path',
-		($userPath.TrimEnd(';') + ';' + $goBin).TrimStart(';'),
-		'User'
-	)
-}
-```
-
-Open a new PowerShell window after updating `PATH`.
-
-Create a `.env` file in the project root:
-
-```powershell
-@'
-DB_PATH=./database/dienstleistung.db
-JWT_SECRET=replace-with-a-secure-secret
-PLATFORM=dev
-FILEPATH_ROOT=./app
-PORT=8091
-
-JWT_ISSUER=dienstleistung-api
-JWT_AUDIENCE=dienstleistung-api-users
-
-ACCESS_TOKEN_TTL=24h
-REFRESH_TOKEN_TTL=720h
-REFRESH_ACCESS_TOKEN_TTL=15m
-
-LOGIN_RATE_LIMIT_PER_MINUTE=10
-LOGIN_FAILED_RATE_LIMIT_PER_MINUTE=5
-REFRESH_RATE_LIMIT_PER_MINUTE=30
-'@ | Set-Content .env
-```
-
-Run the API from the project directory:
-
-```powershell
-go run .
-```
 
 ## Configuration
 

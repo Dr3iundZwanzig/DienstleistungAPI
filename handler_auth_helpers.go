@@ -16,7 +16,7 @@ func (cfg *apiConfig) authenticateExistingUser(w http.ResponseWriter, r *http.Re
 		return uuid.Nil, false
 	}
 
-	userID, err := auth.ValidateJWT(bearerToken, cfg.jwtSecret, cfg.jwtIssuer, cfg.jwtAudience)
+	userID, claims, err := auth.ValidateJWTClaims(bearerToken, cfg.jwtSecret, cfg.jwtIssuer, cfg.jwtAudience)
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "Invalid or expired token", err)
 		return uuid.Nil, false
@@ -28,6 +28,11 @@ func (cfg *apiConfig) authenticateExistingUser(w http.ResponseWriter, r *http.Re
 		return uuid.Nil, false
 	}
 	if user == nil {
+		respondWithError(w, http.StatusUnauthorized, "Session no longer valid. Please log in again.", nil)
+		return uuid.Nil, false
+	}
+
+	if user.SessionVersion != claims.SessionVersion {
 		respondWithError(w, http.StatusUnauthorized, "Session no longer valid. Please log in again.", nil)
 		return uuid.Nil, false
 	}

@@ -2,7 +2,7 @@
 
 ## Overview
 
-DienstleistungAPI is a RESTful API for managing service appointments, employees, availability, and services. It provides secure authentication using JWT tokens with refresh token rotation.
+DienstleistungAPI is a RESTful API for managing service appointments, employees, availability, and services. It provides secure authentication using JWT access tokens, refresh token rotation, and server-side session invalidation.
 
 ## Base URL
 
@@ -20,6 +20,8 @@ The API uses JWT (JSON Web Token) based authentication with refresh token rotati
 
 - **Access Token**: Short-lived JWT for authenticating API requests (default TTL: 24h)
 - **Refresh Token**: Longer-lived token stored in the database for obtaining new access tokens (default TTL: 168h / 7 days)
+
+Access tokens include a `session_version` claim. Protected endpoints validate this against the user's current `session_version` in the database. If the values differ, the token is rejected.
 
 ### Bearer Token Format
 
@@ -66,11 +68,11 @@ POST /api/login
 {
   "id": "uuid",
   "email": "user@example.com",
-  "role": "user",
-  "is_active": true,
+  "role": "customer",
+  "session_version": 1,
   "created_at": "2024-01-15T10:30:00Z",
   "token": "eyJhbGciOiJIUzI1NiIs...",
-  "refresh_token": "refresh_token_hash"
+  "refresh_token": "refresh_token_plaintext"
 }
 ```
 
@@ -113,7 +115,7 @@ Authorization: Bearer {refresh_token}
 
 #### Revoke Session
 
-Revoke the current refresh token and invalidate all sessions for this token.
+Revoke one refresh token.
 
 ```
 POST /api/revoke
@@ -124,12 +126,35 @@ Authorization: Bearer {refresh_token}
 - No response body
 
 **Notes**:
-- User must log in again after revocation
-- Effectively logs out the user
+- This revokes only the provided refresh token
+- Existing access tokens remain valid until they expire or sessions are invalidated server-side
 
 **Errors**:
 - `400 Bad Request`: Token not found in header
 - `500 Internal Server Error`: Server error during revocation
+
+---
+
+#### Logout All Sessions
+
+Invalidate all active sessions for the authenticated user in one action.
+
+```
+POST /api/logout-all
+Authorization: Bearer {access_token}
+```
+
+**Response** (204 No Content):
+- No response body
+
+**Notes**:
+- Increments the user's `session_version` so previously issued access tokens become invalid
+- Revokes all non-revoked refresh tokens for the user
+- Client should clear local tokens immediately after calling this endpoint
+
+**Errors**:
+- `401 Unauthorized`: Missing or invalid access token
+- `500 Internal Server Error`: Server error during session invalidation
 
 ---
 
@@ -156,8 +181,8 @@ POST /api/users
 {
   "id": "uuid",
   "email": "newuser@example.com",
-  "role": "user",
-  "is_active": true,
+  "role": "customer",
+  "session_version": 1,
   "created_at": "2024-01-15T10:30:00Z"
 }
 ```
@@ -686,8 +711,13 @@ All error responses follow this format:
 ### Logout
 
 1. Client sends `refresh_token` to `POST /api/revoke`
-2. Refresh token is invalidated
-3. All sessions using this refresh token are ended
+2. Only that refresh token is invalidated
+
+### Logout All Devices/Sessions
+
+1. Client sends `access_token` to `POST /api/logout-all`
+2. API increments `session_version` (invalidates older access tokens)
+3. API revokes all refresh tokens for that user
 
 ---
 
@@ -747,9 +777,13 @@ curl.exe -X POST http://localhost:3000/api/appointments \
 curl.exe http://localhost:3000/api/appointments \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
 
-# 8. Logout
+# 8. Logout current refresh token
 curl.exe -X POST http://localhost:3000/api/revoke \
   -H "Authorization: Bearer YOUR_REFRESH_TOKEN"
+
+# 9. Logout all sessions/devices
+curl.exe -X POST http://localhost:3000/api/logout-all \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
 ```
 
 **Note**: On Linux/macOS, use `curl` instead of `curl.exe`
