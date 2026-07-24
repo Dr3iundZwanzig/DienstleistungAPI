@@ -303,9 +303,9 @@ Erstellen Sie eine `.env`-Datei im Projekt-Root.
 
 ### Optionale Auth-TTL-Variablen (Go-Duration-Format)
 
-- `ACCESS_TOKEN_TTL` (Standard: `24h`)
+- `ACCESS_TOKEN_TTL` (Standard: `15m`)
 - `REFRESH_TOKEN_TTL` (Standard: `168h`)
-- `REFRESH_ACCESS_TOKEN_TTL` (Standard: `1h`)
+- `REFRESH_ACCESS_TOKEN_TTL` (Standard: `15m`)
 
 Hinweise:
 

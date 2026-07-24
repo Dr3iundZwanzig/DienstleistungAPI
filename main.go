@@ -104,9 +104,9 @@ func main() {
 	}
 
 	// .env variabeln standart werte wenn nicht vorhanden
-	accessTokenTTL := readDurationEnvOrDefault("ACCESS_TOKEN_TTL", time.Hour*24)
+	accessTokenTTL := readDurationEnvOrDefault("ACCESS_TOKEN_TTL", time.Minute*15)
 	refreshTokenTTL := readDurationEnvOrDefault("REFRESH_TOKEN_TTL", time.Hour*24*7)
-	refreshedAccessTokenTTL := readDurationEnvOrDefault("REFRESH_ACCESS_TOKEN_TTL", time.Hour)
+	refreshedAccessTokenTTL := readDurationEnvOrDefault("REFRESH_ACCESS_TOKEN_TTL", time.Minute*15)
 	loginRateLimitPerMinute := readIntEnvOrDefault("LOGIN_RATE_LIMIT_PER_MINUTE", 10)
 	loginFailedRateLimitPerMinute := readIntEnvOrDefault("LOGIN_FAILED_RATE_LIMIT_PER_MINUTE", 5)
 	refreshRateLimitPerMinute := readIntEnvOrDefault("REFRESH_RATE_LIMIT_PER_MINUTE", 30)

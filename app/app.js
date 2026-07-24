@@ -77,8 +77,8 @@ function hasAuthSession() {
 
 let revokeInFlight = false;
 // api request um den refresh token ungültig zu machen
-async function revokeRefreshTokenSilently(refreshToken) {
-    if (!refreshToken || revokeInFlight) {
+async function revokeRefreshTokenSilently() {
+    if (revokeInFlight) {
         return;
     }
 
@@ -86,9 +86,7 @@ async function revokeRefreshTokenSilently(refreshToken) {
     try {
         await fetch('/api/revoke', {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${refreshToken}`,
-            },
+            credentials: 'same-origin',
         });
     } catch (_) {
         
@@ -110,6 +108,7 @@ async function logoutAllSessionsSilently(accessToken) {
             headers: {
                 'Authorization': `Bearer ${accessToken}`,
             },
+            credentials: 'same-origin',
         });
 
         return res.ok;
@@ -190,6 +189,7 @@ async function apiFetch(input, init, options = {}) {
     const firstRequestInit = {
         ...config,
         headers: firstHeaders,
+        credentials: config.credentials || 'same-origin',
     };
 
     const firstRes = await fetch(input, firstRequestInit);
@@ -214,6 +214,7 @@ async function apiFetch(input, init, options = {}) {
     const retryRequestInit = {
         ...config,
         headers: retryHeaders,
+        credentials: config.credentials || 'same-origin',
     };
 
     return fetch(input, retryRequestInit);

@@ -1,8 +1,8 @@
-# DienstleistungAPI Documentation
+﻿# DienstleistungAPI Documentation
 
 ## Overview
 
-DienstleistungAPI is a RESTful API for managing service appointments, employees, availability, and services. It provides secure authentication using JWT access tokens, refresh token rotation, and server-side session invalidation.
+DienstleistungAPI is a RESTful API for managing appointments, employees, availability, and services. It uses JWT-based authentication, refresh-token rotation, and role-based access checks for staff/admin endpoints.
 
 ## Base URL
 
@@ -10,22 +10,20 @@ DienstleistungAPI is a RESTful API for managing service appointments, employees,
 http://localhost:{PORT}/api
 ```
 
-Replace `{PORT}` with the configured port (from environment variable `PORT`).
+Replace `{PORT}` with the configured port from the `PORT` environment variable.
 
 ## Authentication
 
-The API uses JWT (JSON Web Token) based authentication with refresh token rotation for sensitive endpoints.
+The API uses JWT access tokens for authenticated requests. Refresh tokens are issued as an `HttpOnly` cookie and can also be supplied via the `Authorization` header.
 
 ### Token Types
 
-- **Access Token**: Short-lived JWT for authenticating API requests (default TTL: 24h)
-- **Refresh Token**: Longer-lived token stored in the database for obtaining new access tokens (default TTL: 168h / 7 days)
-
-Access tokens include a `session_version` claim. Protected endpoints validate this against the user's current `session_version` in the database. If the values differ, the token is rejected.
+- Access token: short-lived JWT used for API requests
+- Refresh token: longer-lived token used to mint new access tokens
 
 ### Bearer Token Format
 
-Include the token in the `Authorization` header:
+Include the access token in the `Authorization` header:
 
 ```
 Authorization: Bearer {token}
@@ -33,13 +31,13 @@ Authorization: Bearer {token}
 
 ## Rate Limiting
 
-The API implements rate limiting per client IP, configurable in the .env file:
+The API applies per-IP rate limits for authentication flows:
 
-- **Login endpoint**: 10 requests/minute (configurable via `LOGIN_RATE_LIMIT_PER_MINUTE`)
-- **Failed login attempts**: 5 failed attempts/minute (configurable via `LOGIN_FAILED_RATE_LIMIT_PER_MINUTE`)
-- **Refresh endpoint**: 30 requests/minute (configurable via `REFRESH_RATE_LIMIT_PER_MINUTE`)
+- Login: 10 requests/minute
+- Failed login attempts: 5 failed attempts/minute
+- Refresh: 30 requests/minute
 
-Rate limit violations return `429 Too Many Requests`.
+Violations return `429 Too Many Requests`.
 
 ## API Endpoints
 
@@ -47,15 +45,13 @@ Rate limit violations return `429 Too Many Requests`.
 
 #### Login
 
-Create a new session and obtain access and refresh tokens.
+Create a session and obtain an access token.
 
 ```
 POST /api/login
 ```
 
-**Rate Limited**: 10 requests/minute per IP
-
-**Request Body**:
+Request body:
 ```json
 {
   "email": "user@example.com",
@@ -63,53 +59,52 @@ POST /api/login
 }
 ```
 
-**Response** (200 OK):
+Response `200 OK`:
 ```json
 {
   "id": "uuid",
   "email": "user@example.com",
-  "role": "customer",
+  "role": "user",
   "session_version": 1,
   "created_at": "2024-01-15T10:30:00Z",
-  "token": "eyJhbGciOiJIUzI1NiIs...",
-  "refresh_token": "refresh_token_plaintext"
+  "token": "eyJhbGciOiJIUzI1NiIs..."
 }
 ```
 
-**Errors**:
-- `401 Unauthorized`: Incorrect email or password
-- `429 Too Many Requests`: Rate limit exceeded
+Notes:
+- The API also sets an `HttpOnly` `refresh_token` cookie.
+- The refresh token is not returned in the JSON body.
+
+Errors:
+- `401 Unauthorized`: invalid credentials
+- `429 Too Many Requests`: rate limit exceeded
 
 ---
 
 #### Refresh Token
 
-Obtain a new access token using a valid refresh token. Automatically rotates the refresh token.
+Obtain a new access token using a valid refresh token.
 
 ```
 POST /api/refresh
 Authorization: Bearer {refresh_token}
 ```
 
-**Rate Limited**: 30 requests/minute per IP
-
-**Response** (200 OK):
+Response `200 OK`:
 ```json
 {
-  "token": "new_eyJhbGciOiJIUzI1NiIs...",
-  "refresh_token": "new_refresh_token_hash"
+  "token": "new_eyJhbGciOiJIUzI1NiIs..."
 }
 ```
 
-**Notes**:
-- Old refresh token is invalidated
-- Client must store and use the new refresh token
-- Returns new access token with shorter TTL (default: 1h, configurable via `REFRESH_ACCESS_TOKEN_TTL`)
+Notes:
+- The refresh token can also be supplied via the `refresh_token` cookie.
+- The previous refresh token is invalidated after a successful refresh.
 
-**Errors**:
-- `400 Bad Request`: Token not found in header
-- `401 Unauthorized`: Invalid or expired refresh token
-- `429 Too Many Requests`: Rate limit exceeded
+Errors:
+- `400 Bad Request`: no token found
+- `401 Unauthorized`: invalid or expired refresh token
+- `429 Too Many Requests`: rate limit exceeded
 
 ---
 
@@ -122,39 +117,28 @@ POST /api/revoke
 Authorization: Bearer {refresh_token}
 ```
 
-**Response** (204 No Content):
-- No response body
+Response `204 No Content`.
 
-**Notes**:
-- This revokes only the provided refresh token
-- Existing access tokens remain valid until they expire or sessions are invalidated server-side
-
-**Errors**:
-- `400 Bad Request`: Token not found in header
-- `500 Internal Server Error`: Server error during revocation
+Errors:
+- `400 Bad Request`: no token found
+- `500 Internal Server Error`: revocation failed
 
 ---
 
 #### Logout All Sessions
 
-Invalidate all active sessions for the authenticated user in one action.
+Invalidate all active sessions for the authenticated user.
 
 ```
 POST /api/logout-all
 Authorization: Bearer {access_token}
 ```
 
-**Response** (204 No Content):
-- No response body
+Response `204 No Content`.
 
-**Notes**:
-- Increments the user's `session_version` so previously issued access tokens become invalid
-- Revokes all non-revoked refresh tokens for the user
-- Client should clear local tokens immediately after calling this endpoint
-
-**Errors**:
-- `401 Unauthorized`: Missing or invalid access token
-- `500 Internal Server Error`: Server error during session invalidation
+Errors:
+- `401 Unauthorized`: missing or invalid token
+- `500 Internal Server Error`: invalidation failed
 
 ---
 
@@ -168,7 +152,7 @@ Register a new user account.
 POST /api/users
 ```
 
-**Request Body**:
+Request body:
 ```json
 {
   "email": "newuser@example.com",
@@ -176,20 +160,21 @@ POST /api/users
 }
 ```
 
-**Response** (201 Created):
+Response `201 Created`:
 ```json
 {
   "id": "uuid",
   "email": "newuser@example.com",
-  "role": "customer",
+  "role": "user",
   "session_version": 1,
   "created_at": "2024-01-15T10:30:00Z"
 }
 ```
 
-**Errors**:
-- `400 Bad Request`: Email or password missing
-- `500 Internal Server Error`: User already exists or database error
+Errors:
+- `400 Bad Request`: email or password missing
+- `409 Conflict`: email already exists
+- `500 Internal Server Error`: database or hashing error
 
 ---
 
@@ -204,97 +189,84 @@ GET /api/appointments
 Authorization: Bearer {access_token}
 ```
 
-**Response** (200 OK):
+Response `200 OK`:
 ```json
 {
   "data": [
     {
       "id": "appointment-uuid",
-      "user_id": "user-uuid",
-      "employee_id": "employee-id",
+      "created_at": "2024-01-15T10:30:00Z",
+      "updated_at": "2024-01-15T10:30:00Z",
       "date": "2024-02-20",
       "start_time": "10:00",
       "end_time": "11:00",
-      "services": [
-        {
-          "id": "service-id",
-          "name": "Haarschnitt",
-          "description": "Waschen, Schneiden, Föhnen",
-          "duration_minutes": 45,
-          "price": 39.90,
-          "currency": "EUR"
-        }
-      ],
-      "total_duration_minutes": 45,
-      "total_price": 39.90,
-      "status": "confirmed",
-      "created_at": "2024-01-15T10:30:00Z"
+      "employee_name": "Max Mustermann",
+      "employee_id": "emp-001",
+      "user_id": "user-uuid",
+      "services": ["Haarschnitt", "Farbe"],
+      "total_duration_minutes": 90,
+      "total_price": 79.8
     }
   ]
 }
 ```
 
-**Errors**:
-- `401 Unauthorized`: Missing or invalid token
+Errors:
+- `401 Unauthorized`: missing or invalid token
 
 ---
 
 #### Create Appointment
 
-Book a new appointment. Automatically selects an available employee if not specified.
+Book a new appointment.
 
 ```
 POST /api/appointments
 Authorization: Bearer {access_token}
 ```
 
-**Request Body**:
+Request body:
 ```json
 {
   "date": "2024-02-20",
   "start_time": "10:00",
   "end_time": "11:00",
   "service_ids": ["srv_001", "srv_002"],
-  "employee_id": "emp-uuid",
+  "employee_id": "emp-001",
   "no_preference": false
 }
 ```
 
-**Parameters**:
-- `date` (required): Appointment date in YYYY-MM-DD format
-- `start_time` (required): Start time in HH:MM format
-- `end_time` (required): End time in HH:MM format
-- `service_ids` (required): Array of service IDs to book
-- `employee_id` (optional): Specific employee UUID; if omitted and `no_preference` is false, system finds best match
-- `no_preference` (optional): If true, allows any available employee
+Fields:
+- `date` (required): `YYYY-MM-DD`
+- `start_time` (required): `HH:MM`
+- `end_time` (required): `HH:MM`
+- `service_ids` (required): one or more leaf-service IDs
+- `employee_id` (optional): specific employee ID
+- `no_preference` (optional): if `true`, an employee is resolved automatically
 
-**Response** (201 Created):
+Response `201 Created`:
 ```json
 {
   "id": "appointment-uuid",
-  "user_id": "user-uuid",
-  "employee_id": "employee-id",
+  "created_at": "2024-01-15T10:30:00Z",
+  "updated_at": "2024-01-15T10:30:00Z",
   "date": "2024-02-20",
   "start_time": "10:00",
   "end_time": "11:00",
-  "services": [
-    {
-      "id": "service-id",
-      "name": "Haarschnitt",
-      "price": 39.90
-    }
-  ],
-  "total_duration_minutes": 45,
-  "total_price": 39.90,
-  "status": "confirmed",
-  "created_at": "2024-01-15T10:30:00Z"
+  "employee_name": "Max Mustermann",
+  "employee_id": "emp-001",
+  "user_id": "user-uuid",
+  "services": ["Haarschnitt", "Farbe"],
+  "total_duration_minutes": 90,
+  "total_price": 79.8
 }
 ```
 
-**Errors**:
-- `400 Bad Request`: Invalid request body or missing required fields
-- `401 Unauthorized`: Missing or invalid token
-- `409 Conflict`: Appointment slot not available
+Errors:
+- `400 Bad Request`: invalid body or missing required fields
+- `401 Unauthorized`: missing or invalid token
+- `409 Conflict`: selected slot is no longer available
 
 ---
 
@@ -307,41 +279,23 @@ PUT /api/appointments/{id}
 Authorization: Bearer {access_token}
 ```
 
-**Parameters**:
-- `id` (path parameter): Appointment UUID
-
-**Request Body**:
+Request body:
 ```json
 {
   "date": "2024-02-21",
   "start_time": "14:00",
   "end_time": "15:00",
-  "service_ids": ["srv_001"],
-  "employee_id": "emp-uuid"
+  "employee_id": "emp-001"
 }
 ```
 
-**Response** (200 OK):
-```json
-{
-  "id": "appointment-uuid",
-  "user_id": "user-uuid",
-  "employee_id": "employee-id",
-  "date": "2024-02-21",
-  "start_time": "14:00",
-  "end_time": "15:00",
-  "services": [...],
-  "total_duration_minutes": 45,
-  "total_price": 39.90,
-  "status": "confirmed",
-  "created_at": "2024-01-15T10:30:00Z"
-}
-```
+Response `200 OK` with the updated appointment object.
 
-**Errors**:
-- `401 Unauthorized`: Missing or invalid token
-- `404 Not Found`: Appointment not found
-- `409 Conflict`: New slot not available
+Errors:
+- `400 Bad Request`: missing required fields
+- `401 Unauthorized`: missing or invalid token
+- `404 Not Found`: appointment not found
+- `409 Conflict`: new slot is unavailable
 
 ---
 
@@ -354,36 +308,42 @@ DELETE /api/appointments/{id}
 Authorization: Bearer {access_token}
 ```
 
-**Parameters**:
-- `id` (path parameter): Appointment UUID
+Response `200 OK`:
+```json
+{
+  "message": "Appointment cancelled",
+  "id": "appointment-uuid"
+}
+```
 
-**Response** (204 No Content):
-- No response body
-
-**Errors**:
-- `401 Unauthorized`: Missing or invalid token
-- `404 Not Found`: Appointment not found
+Errors:
+- `401 Unauthorized`: missing or invalid token
+- `404 Not Found`: appointment not found
 
 ---
 
 #### Cancel All Appointments
 
-Cancel all appointments for the authenticated user. **Test endpoint only.**
+Cancel all appointments for the authenticated user. This is a test endpoint.
 
 ```
 DELETE /api/appointments/delete
 Authorization: Bearer {access_token}
 ```
 
-**Response** (204 No Content):
-- No response body
+Response `200 OK`:
+```json
+{
+  "message": "Appointment cancelled"
+}
+```
 
-**Notes**:
-- This endpoint is intended for testing purposes, should be removed later
-- Cancels all appointments belonging to the user
+Notes:
+- Intended for testing and cleanup flows.
+- Reopens availability slots for the affected appointments.
 
-**Errors**:
-- `401 Unauthorized`: Missing or invalid token
+Errors:
+- `401 Unauthorized`: missing or invalid token
 
 ---
 
@@ -391,32 +351,29 @@ Authorization: Bearer {access_token}
 
 #### Get Employee Availability
 
-Retrieve available time slots for an employee.
+Retrieve availability for a specific employee.
 
 ```
 GET /api/availability?employee_id={employee_id}
 ```
 
-**Query Parameters**:
-- `employee_id` (required): Employee ID
+Query parameter:
+- `employee_id` (required): employee ID
 
-**Response** (200 OK):
+Response `200 OK`:
 ```json
 {
   "employee_id": "emp-001",
+  "created_at": "2024-01-15T10:30:00Z",
+  "updated_at": "2024-01-15T10:30:00Z",
   "dates": [
     {
       "date": "2024-02-20",
-      "time_slots": [
+      "slots": [
         {
           "start_time": "09:00",
           "end_time": "10:00",
           "is_available": true
-        },
-        {
-          "start_time": "10:00",
-          "end_time": "11:00",
-          "is_available": false
         }
       ]
     }
@@ -424,42 +381,34 @@ GET /api/availability?employee_id={employee_id}
 }
 ```
 
-**Notes**:
-- If employee has no availability record, system automatically seeds with default availability when seeding employees
-
-**Errors**:
-- `400 Bad Request`: Missing employee_id parameter
-- `500 Internal Server Error`: Database error
+Errors:
+- `400 Bad Request`: missing `employee_id`
+- `500 Internal Server Error`: no availability exists or database error
 
 ---
 
 #### Set Employee Availability
 
-Create or update availability schedule for an employee for later implementation of employee/admin scopes.
+Create or update the availability schedule for an employee.
 
 ```
 POST /api/availability
 Authorization: Bearer {access_token}
 ```
 
-**Authentication**: Requires staff or admin role
+Authentication: requires staff or admin role.
 
-**Request Body**:
+Request body:
 ```json
 {
   "employee_id": "emp-001",
   "dates": [
     {
       "date": "2024-02-20",
-      "time_slots": [
+      "slots": [
         {
           "start_time": "09:00",
           "end_time": "10:00",
-          "is_available": true
-        },
-        {
-          "start_time": "10:00",
-          "end_time": "17:00",
           "is_available": true
         }
       ]
@@ -468,18 +417,23 @@ Authorization: Bearer {access_token}
 }
 ```
 
-**Response** (201 Created):
+Response `201 Created`:
 ```json
 {
-  "employee_id": "emp-001",
-  "dates": [...],
-  "updated_at": "2024-01-15T10:30:00Z"
+  "message": "Availability saved",
+  "availability": {
+    "employee_id": "emp-001",
+    "created_at": "2024-01-15T10:30:00Z",
+    "updated_at": "2024-01-15T10:30:00Z",
+    "dates": []
+  }
 }
 ```
 
-**Errors**:
-- `401 Unauthorized`: Missing token or insufficient permissions (requires staff/admin)
-- `400 Bad Request`: Invalid request body
+Errors:
+- `400 Bad Request`: invalid request body or missing values
+- `401 Unauthorized`: missing or invalid token
+- `403 Forbidden`: staff/admin role required
 
 ---
 
@@ -487,13 +441,13 @@ Authorization: Bearer {access_token}
 
 #### List Employees
 
-Retrieve all active employees.
+Retrieve all employees.
 
 ```
 GET /api/employees
 ```
 
-**Response** (200 OK):
+Response `200 OK`:
 ```json
 {
   "data": [
@@ -501,57 +455,42 @@ GET /api/employees
       "id": "emp-001",
       "name": "Max Mustermann",
       "title": "Senior Stylist",
-      "specialties": ["srv_001", "srv_002", "srv_005"],
-      "is_active": true
-    },
-    {
-      "id": "emp-002",
-      "name": "Petra Schmidt",
-      "title": "Stylist",
-      "specialties": ["srv_001", "srv_003"],
+      "specialties": ["srv_001", "srv_002"],
       "is_active": true
     }
   ]
 }
 ```
 
-**Errors**:
-- `500 Internal Server Error`: Database error
-
 ---
 
 #### Resolve Employee
 
-Find the best available employee for a specific service based on criteria.
+Resolve an employee ID from a list of services.
 
 ```
 POST /api/employees/resolve
 Authorization: Bearer {access_token}
 ```
 
-**Request Body**:
+Request body:
 ```json
 {
-  "date": "2024-02-20",
-  "start_time": "10:00",
-  "end_time": "11:00",
-  "service_ids": ["srv_001"]
+  "services": ["Haarschnitt", "Farbe"]
 }
 ```
 
-**Response** (200 OK):
+Response `200 OK`:
 ```json
 {
-  "employee_id": "emp-001",
-  "employee_name": "Max Mustermann",
-  "title": "Senior Stylist",
-  "availability_status": "available"
+  "employee_id": "emp-001"
 }
 ```
 
-**Errors**:
-- `400 Bad Request`: Invalid request or no employees available
-- `401 Unauthorized`: Missing or invalid token
+Errors:
+- `400 Bad Request`: invalid request body
+- `401 Unauthorized`: missing or invalid token
+- `500 Internal Server Error`: resolution failed
 
 ---
 
@@ -559,13 +498,13 @@ Authorization: Bearer {access_token}
 
 #### Get Services Tree
 
-Retrieve the hierarchical structure of all available services.
+Retrieve the service hierarchy.
 
 ```
 GET /api/services/tree
 ```
 
-**Response** (200 OK):
+Response `200 OK`:
 ```json
 {
   "data": [
@@ -575,21 +514,14 @@ GET /api/services/tree
       "is_active": true,
       "children": [
         {
-          "id": "sub_01",
-          "name": "Herren",
+          "id": "srv_001",
+          "name": "Haarschnitt",
+          "description": "Waschen, Schneiden, Föhnen",
+          "duration_minutes": 45,
+          "price": 39.9,
+          "currency": "EUR",
           "is_active": true,
-          "children": [
-            {
-              "id": "srv_001",
-              "name": "Haarschnitt",
-              "description": "Waschen, Schneiden, Föhnen",
-              "duration_minutes": 45,
-              "price": 39.90,
-              "currency": "EUR",
-              "is_active": true,
-              "children": []
-            }
-          ]
+          "children": []
         }
       ]
     }
@@ -597,39 +529,49 @@ GET /api/services/tree
 }
 ```
 
-**Errors**:
-- `500 Internal Server Error`: Database error
-
 ---
 
 ### Testing (Development Only)
 
 #### Reset and Seed Database
 
-Reset the database and populate with default seed data.
+Reset the database and repopulate it with default seed data.
 
 ```
 POST /api/test/reset-and-seed
 Authorization: Bearer {access_token}
 ```
 
-**Usage with curl**:
-- Windows: curl.exe -X POST "http://localhost:{PORT}/api/test/reset-and-seed"
-- Linux: curl -X POST "http://localhost:{PORT}/api/test/reset-and-seed"
+Authentication: requires staff or admin role.
 
-**Authentication**: Requires staff or admin role
+Response `201 Created`:
+```json
+{
+  "message": "Database reset and test data seeded",
+  "seeded_employees": 3,
+  "seeded_services": 8
+}
+```
 
-**Response** (204 No Content):
-- No response body
+Notes:
+- Only available when `PLATFORM` is `dev` or `test`.
+- This endpoint deletes and recreates the seeded data.
 
-**Notes**:
-- **WARNING**: This endpoint deletes all data and repopulates with defaults
-- Only available in development/test environments
-- Requires staff or admin role
+#### Reset and reseed from the terminal
 
-**Errors**:
-- `401 Unauthorized`: Missing token or insufficient permissions
-- `500 Internal Server Error`: Database error
+If you prefer to trigger the same flow directly from the shell, use the API endpoint with `curl` after the server is running:
+
+```bash
+curl.exe -X POST http://localhost:{PORT}/api/test/reset-and-seed \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+For a local development setup, make sure the server is started with `PLATFORM=dev` or `PLATFORM=test` so the endpoint is allowed.
+
+Errors:
+- `403 Forbidden`: not available in the current platform
+- `401 Unauthorized`: missing token or insufficient permissions
+- `500 Internal Server Error`: reset or seeding failed
 
 ---
 
@@ -643,103 +585,20 @@ All error responses follow this format:
 }
 ```
 
-### Common HTTP Status Codes
+## Common Status Codes
 
-- `200 OK`: Request successful
-- `201 Created`: Resource created successfully
-- `204 No Content`: Request successful, no content to return
-- `400 Bad Request`: Invalid request parameters or body
-- `401 Unauthorized`: Missing, invalid, or expired authentication token
-- `404 Not Found`: Requested resource not found
-- `409 Conflict`: Request conflicts with current resource state (e.g., double-booking)
-- `429 Too Many Requests`: Rate limit exceeded
-- `500 Internal Server Error`: Server error occurred
+- `200 OK`
+- `201 Created`
+- `204 No Content`
+- `400 Bad Request`
+- `401 Unauthorized`
+- `403 Forbidden`
+- `404 Not Found`
+- `409 Conflict`
+- `429 Too Many Requests`
+- `500 Internal Server Error`
 
----
-
-## Environment Variables
-
-### Required
-
-- `DB_PATH`: Database connection string
-- `JWT_SECRET`: Secret key for signing JWT tokens
-- `PLATFORM`: Platform identifier
-- `FILEPATH_ROOT`: Root path for file storage
-- `PORT`: HTTP server port
-
-### Optional (with defaults)
-
-- `JWT_ISSUER` (default: `dienstleistung-api`): JWT issuer claim
-- `JWT_AUDIENCE` (default: `dienstleistung-api-users`): JWT audience claim
-- `ACCESS_TOKEN_TTL` (default: `24h`): Access token lifetime (Go duration format)
-- `REFRESH_TOKEN_TTL` (default: `168h`): Refresh token lifetime (Go duration format)
-- `REFRESH_ACCESS_TOKEN_TTL` (default: `1h`): Access token lifetime when obtained via refresh (Go duration format)
-- `LOGIN_RATE_LIMIT_PER_MINUTE` (default: `10`): Max login requests per minute
-- `LOGIN_FAILED_RATE_LIMIT_PER_MINUTE` (default: `5`): Max failed login attempts per minute
-- `REFRESH_RATE_LIMIT_PER_MINUTE` (default: `30`): Max refresh requests per minute
-
-### Duration Format Examples
-
-- `24h` = 24 hours
-- `15m` = 15 minutes
-- `720h` = 30 days (note: Go doesn't support days directly)
-- `1h30m` = 1 hour 30 minutes
-
----
-
-## Authentication Flow
-
-### Initial Login
-
-1. Client sends email and password to `POST /api/login`
-2. API returns `access_token` and `refresh_token`
-3. Client stores both tokens
-
-### Subsequent Requests
-
-1. Client includes `access_token` in `Authorization: Bearer` header
-2. API validates token and processes request
-3. If token is valid, request proceeds; if invalid/expired, returns `401 Unauthorized`
-
-### Token Refresh
-
-1. When access token expires, client sends `refresh_token` to `POST /api/refresh`
-2. API validates refresh token and returns new `access_token` and new `refresh_token`
-3. **Important**: Client must replace the old refresh token with the new one
-4. Old refresh token is invalidated
-
-### Logout
-
-1. Client sends `refresh_token` to `POST /api/revoke`
-2. Only that refresh token is invalidated
-
-### Logout All Devices/Sessions
-
-1. Client sends `access_token` to `POST /api/logout-all`
-2. API increments `session_version` (invalidates older access tokens)
-3. API revokes all refresh tokens for that user
-
----
-
-## Data Types
-
-### Appointment Status
-
-- `confirmed`: Appointment is confirmed and active
-- `cancelled`: Appointment has been cancelled
-- `completed`: Appointment has been completed
-
-### User Roles
-
-- `user`: Regular user can book appointments
-- `staff`: Staff member can manage availability and services
-- `admin`: Administrator with full system access
-
----
-
-## Examples
-
-### Complete Booking Flow
+## Example Flow
 
 ```bash
 # 1. Register user
@@ -751,15 +610,14 @@ curl.exe -X POST http://localhost:3000/api/users \
 curl.exe -X POST http://localhost:3000/api/login \
   -H "Content-Type: application/json" \
   -d '{"email":"user@example.com","password":"secure123"}'
-# Response includes access_token and refresh_token
 
-# 3. Get available services
+# 3. Get services
 curl.exe http://localhost:3000/api/services/tree
 
 # 4. Get employees
 curl.exe http://localhost:3000/api/employees
 
-# 5. Check employee availability
+# 5. Check availability
 curl.exe "http://localhost:3000/api/availability?employee_id=emp-001"
 
 # 6. Book appointment
@@ -772,20 +630,4 @@ curl.exe -X POST http://localhost:3000/api/appointments \
     "end_time":"11:00",
     "service_ids":["srv_001"]
   }'
-
-# 7. View appointments
-curl.exe http://localhost:3000/api/appointments \
-  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
-
-# 8. Logout current refresh token
-curl.exe -X POST http://localhost:3000/api/revoke \
-  -H "Authorization: Bearer YOUR_REFRESH_TOKEN"
-
-# 9. Logout all sessions/devices
-curl.exe -X POST http://localhost:3000/api/logout-all \
-  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
 ```
-
-**Note**: On Linux/macOS, use `curl` instead of `curl.exe`
-
----

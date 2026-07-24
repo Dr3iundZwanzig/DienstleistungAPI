@@ -8,10 +8,22 @@ import (
 	"github.com/Dr3iundZwanzig/DienstleistungAPI/database"
 )
 
+func clearRefreshTokenCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     "refresh_token",
+		Value:    "",
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+		Path:     "/",
+		MaxAge:   -1,
+		Expires:  time.Unix(0, 0).UTC(),
+	})
+}
+
 func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, r *http.Request) {
 	type response struct {
-		Token        string `json:"token"`
-		RefreshToken string `json:"refresh_token"`
+		Token string `json:"token"`
 	}
 
 	refreshTokenValue := ""
@@ -90,12 +102,13 @@ func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, r *http.Request) {
 	})
 
 	respondWithJSON(w, http.StatusOK, response{
-		Token:        accessToken,
-		RefreshToken: newRefreshToken,
+		Token: accessToken,
 	})
 }
 
 func (cfg *apiConfig) handlerRevoke(w http.ResponseWriter, r *http.Request) {
+	clearRefreshTokenCookie(w)
+
 	refreshTokenValue := ""
 	if bearerToken, err := auth.GetBearerToken(r.Header); err == nil {
 		refreshTokenValue = bearerToken
@@ -125,6 +138,8 @@ func (cfg *apiConfig) handlerRevoke(w http.ResponseWriter, r *http.Request) {
 
 // logout für user
 func (cfg *apiConfig) handlerLogoutAll(w http.ResponseWriter, r *http.Request) {
+	clearRefreshTokenCookie(w)
+
 	userID, ok := cfg.authenticateExistingUser(w, r)
 	if !ok {
 		return

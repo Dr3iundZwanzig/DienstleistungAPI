@@ -305,9 +305,9 @@ Create a `.env` file in the project root.
 
 ### Optional Auth TTL Variables (Go duration format)
 
-- `ACCESS_TOKEN_TTL` (default: `24h`)
+- `ACCESS_TOKEN_TTL` (default: `15m`)
 - `REFRESH_TOKEN_TTL` (default: `168h`)
-- `REFRESH_ACCESS_TOKEN_TTL` (default: `1h`)
+- `REFRESH_ACCESS_TOKEN_TTL` (default: `15m`)
 
 Notes:
 
