@@ -65,7 +65,7 @@ function getRefreshToken() {
     return localStorage.getItem('refresh_token');
 }
 
-// speichert beider tokens lokal im speicher
+// speichern beider tokens lokal im speicher
 function persistAuthTokens(accessToken, refreshToken) {
     if (accessToken) {
         localStorage.setItem('token', accessToken);
@@ -79,7 +79,7 @@ function clearAuthTokens() {
     localStorage.removeItem('token');
     localStorage.removeItem('refresh_token');
 }
-// prüfen das beide tokens vorhanden sond
+// prüfen das beide tokens vorhanden sind
 function hasAuthSession() {
     return Boolean(getAccessToken() || getRefreshToken());
 }
@@ -100,7 +100,7 @@ async function revokeRefreshTokenSilently(refreshToken) {
             },
         });
     } catch (_) {
-        // user wird ausgeloggt auch wenn das backend nicht erreichbar ist oder /api/revoke nicht klappt
+        
     } finally {
         revokeInFlight = false;
     }
@@ -184,13 +184,13 @@ async function refreshAccessToken() {
         refreshRequestPromise = null;
     }
 }
-
+// neue auth endpoints müssen hier hinzugefügt werden um loops zu vermeiden
 function isAuthPath(input) {
     const requestUrl = typeof input === 'string'
         ? input
         : (input && typeof input.url === 'string' ? input.url : '');
     // nur auth endpoints sollten hir sein um refresh/retry loops zu vermeiden
-    return requestUrl.startsWith('/api/login') || requestUrl.startsWith('/api/users') || requestUrl.startsWith('/api/refresh');
+    return requestUrl.startsWith('/api/login') || requestUrl.startsWith('/api/users') || requestUrl.startsWith('/api/refresh') || requestUrl.startsWith('/api/revoke') || requestUrl.startsWith('/api/logout-all');
 }
 
 // Bei 401 wird einmal versucht den Access Token zu erneuern und die Request zu wiederholen
