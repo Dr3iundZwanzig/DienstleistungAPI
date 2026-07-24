@@ -85,6 +85,16 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	http.SetCookie(w, &http.Cookie{
+		Name:     "refresh_token",
+		Value:    refreshToken,
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+		Path:     "/",
+		MaxAge:   int(cfg.refreshTokenTTL.Seconds()),
+	})
+
 	respondWithJSON(w, http.StatusOK, response{
 		User:         user,
 		Token:        accessToken,

@@ -14,13 +14,19 @@ func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, r *http.Request) {
 		RefreshToken string `json:"refresh_token"`
 	}
 
-	refreshToken, err := auth.GetBearerToken(r.Header)
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Couldn't find token", err)
-		return
+	refreshTokenValue := ""
+	if bearerToken, err := auth.GetBearerToken(r.Header); err == nil {
+		refreshTokenValue = bearerToken
+	} else {
+		cookie, cookieErr := r.Cookie("refresh_token")
+		if cookieErr != nil || cookie.Value == "" {
+			respondWithError(w, http.StatusBadRequest, "Couldn't find token", cookieErr)
+			return
+		}
+		refreshTokenValue = cookie.Value
 	}
 
-	user, err := cfg.db.GetUserByRefreshToken(refreshToken)
+	user, err := cfg.db.GetUserByRefreshToken(refreshTokenValue)
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "Couldn't get user for refresh token", err)
 		return
@@ -31,7 +37,7 @@ func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Hash des alten token für rotation
-	oldTokenHash, err := auth.HashRefreshToken(refreshToken)
+	oldTokenHash, err := auth.HashRefreshToken(refreshTokenValue)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't hash refresh token", err)
 		return
@@ -73,6 +79,16 @@ func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	http.SetCookie(w, &http.Cookie{
+		Name:     "refresh_token",
+		Value:    newRefreshToken,
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+		Path:     "/",
+		MaxAge:   int(cfg.refreshTokenTTL.Seconds()),
+	})
+
 	respondWithJSON(w, http.StatusOK, response{
 		Token:        accessToken,
 		RefreshToken: newRefreshToken,
@@ -80,13 +96,19 @@ func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *apiConfig) handlerRevoke(w http.ResponseWriter, r *http.Request) {
-	refreshToken, err := auth.GetBearerToken(r.Header)
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Couldn't find token", err)
-		return
+	refreshTokenValue := ""
+	if bearerToken, err := auth.GetBearerToken(r.Header); err == nil {
+		refreshTokenValue = bearerToken
+	} else {
+		cookie, cookieErr := r.Cookie("refresh_token")
+		if cookieErr != nil || cookie.Value == "" {
+			respondWithError(w, http.StatusBadRequest, "Couldn't find token", cookieErr)
+			return
+		}
+		refreshTokenValue = cookie.Value
 	}
 
-	tokenHash, err := auth.HashRefreshToken(refreshToken)
+	tokenHash, err := auth.HashRefreshToken(refreshTokenValue)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't hash token", err)
 		return

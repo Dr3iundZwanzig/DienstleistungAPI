@@ -1,6 +1,5 @@
 document.addEventListener('DOMContentLoaded', async () => {
     const token = getAccessToken();
-    const refreshToken = getRefreshToken();
 
     await loadServicesTree();
 
@@ -10,7 +9,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     //rendern nachdem der service tree from backend geladen wurde
     render(servicesTree.data);
 
-    if (!token && refreshToken) {
+    if (!token) {
         const refreshed = await refreshAccessToken();
         if (!refreshed) {
             logout();
@@ -56,32 +55,24 @@ let appointmentsVisible = false;
 let refreshRequestPromise = null;
 let bookingResultTimeoutId = null;
 let logoutAllInFlight = false;
+let accessTokenInMemory = null;
 
 function getAccessToken() {
-    return localStorage.getItem('token');
+    return accessTokenInMemory;
 }
 
-function getRefreshToken() {
-    return localStorage.getItem('refresh_token');
-}
-
-// speichern beider tokens lokal im speicher
-function persistAuthTokens(accessToken, refreshToken) {
+function persistAuthTokens(accessToken) {
     if (accessToken) {
-        localStorage.setItem('token', accessToken);
-    }
-    if (refreshToken) {
-        localStorage.setItem('refresh_token', refreshToken);
+        accessTokenInMemory = accessToken;
     }
 }
-// local beide tokens löschen
+
 function clearAuthTokens() {
-    localStorage.removeItem('token');
-    localStorage.removeItem('refresh_token');
+    accessTokenInMemory = null;
 }
-// prüfen das beide tokens vorhanden sind
+
 function hasAuthSession() {
-    return Boolean(getAccessToken() || getRefreshToken());
+    return Boolean(getAccessToken());
 }
 
 let revokeInFlight = false;
@@ -146,23 +137,16 @@ function makeAuthHeaders(existingHeaders, token) {
     }
     return headers;
 }
-// wenn der access token nach der angegebenen zeit ausläuft wird ein neuer angefordert mit dem refresh token solange der noch gültig ist
+// wenn der access token nach der angegebenen zeit ausläuft wird ein neuer angefordert mit dem refresh token solange er noch gültig ist
 async function refreshAccessToken() {
     if (refreshRequestPromise) {
         return refreshRequestPromise;
     }
 
     refreshRequestPromise = (async () => {
-        const refreshToken = getRefreshToken();
-        if (!refreshToken) {
-            return false;
-        }
-
         const refreshRes = await fetch('/api/refresh', {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${refreshToken}`,
-            },
+            credentials: 'same-origin',
         });
 
         if (!refreshRes.ok) {
@@ -170,11 +154,11 @@ async function refreshAccessToken() {
         }
 
         const data = await refreshRes.json();
-        if (!data || !data.token || !data.refresh_token) {
+        if (!data || !data.token) {
             return false;
         }
 
-        persistAuthTokens(data.token, data.refresh_token);
+        persistAuthTokens(data.token);
         return true;
     })();
 
@@ -253,7 +237,7 @@ async function login() {
         }
 
         if (data.token) {
-            persistAuthTokens(data.token, data.refresh_token || null);
+            persistAuthTokens(data.token);
             await showAuthenticatedState();
         } else {
             alert('Login failed. Please check your credentials.');
@@ -288,13 +272,14 @@ async function signup() {
 //logout und token lokal löschen
 function logout() {
     const accessToken = getAccessToken();
-    const refreshToken = getRefreshToken();
 
     void (async () => {
         const logoutAllSucceeded = await logoutAllSessionsSilently(accessToken);
         if (!logoutAllSucceeded) {
-            //fallback
-            await revokeRefreshTokenSilently(refreshToken);
+            await fetch('/api/revoke', {
+                method: 'POST',
+                credentials: 'same-origin',
+            });
         }
     })();
 
