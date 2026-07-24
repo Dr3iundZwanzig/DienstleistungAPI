@@ -276,8 +276,11 @@ Hinweise:
 
 - `go install .` ist nützlich, wenn Sie einen wiederverwendbaren Befehl in Ihrem `PATH` möchten.
 - Die Modulpfad-Variante ist nützlich, wenn Sie direkt aus dem Repository installieren, ohne zu klonen.
-- `go install github.com/Dr3iundZwanzig/DienstleistungAPI@latest` installiert nur die kompilierte Binärdatei, nicht den Repository-Inhalt.
+- `go install` lädt und cached den Modul-Quellcode sowie die Abhängigkeiten zum Bauen und installiert danach die ausführbare Datei in Ihr Go-`bin`-Verzeichnis.
 - Wenn Sie über den Modulpfad installieren, müssen Sie die Laufzeitdateien trotzdem selbst bereitstellen, besonders `.env` und die Frontend-Dateien, auf die `FILEPATH_ROOT` zeigt.
+- Starten Sie die installierte Binärdatei aus einem Terminal, damit Sie Startfehler direkt sehen (z. B. fehlende `.env`, fehlendes `JWT_SECRET` oder ungültiges `FILEPATH_ROOT`).
+- Bei `go install` über den Modulpfad muss die `.env` in dem Verzeichnis liegen, aus dem Sie die Binärdatei starten (derzeitiger Ordner), oder Sie starten die Binärdatei aus einem Ordner, der bereits eine `.env` enthält.
+- Im `go install`-Modulpfad-Fall müssen `DB_PATH` und `FILEPATH_ROOT` auf echte Laufzeitpfade zeigen; wenn Sie Dateien aus dem heruntergeladenen Modul-Quellcode verwenden, setzen Sie die Pfade auf die `GOMODCACHE`-Kopie (ermittelbar mit `go env GOMODCACHE`).
 - Für lokale Entwicklung ist `go run .` meist der einfachste Workflow.
 - Die App benötigt weiterhin gültige `.env`-Werte und einen korrekten `FILEPATH_ROOT`, auch wenn Sie die installierte Binärdatei starten.
 

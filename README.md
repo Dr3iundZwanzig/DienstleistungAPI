@@ -277,8 +277,11 @@ Notes:
 
 - `go install .` is useful if you want a reusable command in your PATH.
 - The module-path form is useful when installing directly from the repository without cloning first.
-- `go install github.com/Dr3iundZwanzig/DienstleistungAPI@latest` installs only the compiled binary, not the repository contents.
+- `go install` fetches and caches module source code and dependencies to build the binary, then installs the executable into your Go `bin` directory.
 - If you use the module-path install, you must still provide the runtime files yourself, especially `.env` and the frontend files referenced by `FILEPATH_ROOT`.
+- Start the installed binary from a terminal so you can see startup errors directly (for example: missing `.env`, missing `JWT_SECRET`, or invalid `FILEPATH_ROOT`).
+- For `go install` via module path, place your `.env` in the directory where you run the binary from (current working directory), or start the binary from a folder that already contains `.env`.
+- In the `go install` module-path case, update `DB_PATH` and `FILEPATH_ROOT` so they point to real runtime locations; if you reference files from the fetched module source, point them to your `GOMODCACHE` copy (find it with `go env GOMODCACHE`).
 - For local development, `go run .` is usually the simplest workflow.
 - The app still requires your `.env` values and a valid `FILEPATH_ROOT` path when you run the installed binary.
 

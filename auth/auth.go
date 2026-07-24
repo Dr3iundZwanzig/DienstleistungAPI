@@ -15,12 +15,6 @@ import (
 	"github.com/google/uuid"
 )
 
-type TokenType string
-
-const (
-	TokenTypeAccess TokenType = "dienstleistung-access"
-)
-
 var ErrNoAuthHeaderIncluded = errors.New("no auth header included in request")
 
 // erweitert RegisteredClaims mit CustomClaims
@@ -44,17 +38,6 @@ func CheckPasswordHash(password, hash string) (bool, error) {
 		return false, err
 	}
 	return match, nil
-}
-
-func MakeJWT(
-	userID uuid.UUID,
-	tokenSecret string,
-	expiresIn time.Duration,
-	issuer string,
-	audience string,
-	scope string,
-) (string, error) {
-	return MakeJWTWithSessionVersion(userID, tokenSecret, expiresIn, issuer, audience, scope, 1)
 }
 
 func MakeJWTWithSessionVersion(
@@ -84,16 +67,6 @@ func MakeJWTWithSessionVersion(
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString(signingKey)
-}
-
-// testing
-func ValidateJWT(tokenString, tokenSecret, expectedIssuer, expectedAudience string) (uuid.UUID, error) {
-	userID, _, err := ValidateJWTClaims(tokenString, tokenSecret, expectedIssuer, expectedAudience)
-	if err != nil {
-		return uuid.Nil, err
-	}
-
-	return userID, nil
 }
 
 func ValidateJWTClaims(tokenString, tokenSecret, expectedIssuer, expectedAudience string) (uuid.UUID, CustomClaims, error) {

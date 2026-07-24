@@ -293,6 +293,7 @@ function logout() {
     void (async () => {
         const logoutAllSucceeded = await logoutAllSessionsSilently(accessToken);
         if (!logoutAllSucceeded) {
+            //fallback
             await revokeRefreshTokenSilently(refreshToken);
         }
     })();
@@ -847,7 +848,7 @@ async function cancleAllAppointments() {
         setAppointmentsFeedback(`Fehler beim Stornieren: ${error.message}`, true);
     }
 }
-// termine des users durch api von der datenbank laden
+// termine des users durch api von der db laden
 async function loadUserAppointments() {
     if (!hasAuthSession()) {
         showLoggedOutState();
@@ -873,7 +874,7 @@ async function loadUserAppointments() {
 }
 
 let servicesTree = { data: [] };
-// service tree laden aus datenbank
+// service tree laden von der db
 async function loadServicesTree() {
     try {
         const res = await apiFetch('/api/services/tree');
@@ -893,7 +894,7 @@ async function loadServicesTree() {
     servicesTree = { data: [] };
 }
 
-// Mitarbeiter daten in db speichern mit der api
+
 let employeesData = { data: [] };
 // Mitarbeiter daten von der db laden
 async function loadEmployees() {
